@@ -399,6 +399,25 @@ How the game shows armor, found on a throwaway Play character:
   reset a character to the default male look, and the game saved that. Use `.copy()` for
   experiments, and test only on a throwaway character: move `UE4/Saved/game_0*` aside (all of
   them, since backups rotate), let Play make a new character, then put the snapshot back.
+- **Test results (owl-admin 0d00934, throwaway characters):**
+  - Single player: the saved look shows on join, and Clear brings back the real gear. Slots left
+    empty follow the real gear. Outfits arrive by OwlClientTm. The real layout in the database
+    is never changed.
+  - Two players (listen server, 1 client): the client sees the host's character in its transmog
+    look although its real gear is empty. The client's copy of the host's relay has the look but
+    no outfit names; the client's own relay has its outfits.
+  - Not tested:
+    - The host seeing the client's look: a PIE client can't finish character creation (see below).
+    - Different looks per player: PIE players share one account, so they load the same save.
+    - Dye on screen: the test gear had no dye, and Python can't set the real layout.
+    - Respawn timing.
+- **Multiplayer in PIE:** the net mode and player count are only in the Play button's ⋮ menu
+  (Net Mode → Play As Listen Server, Number of Players). `LevelEditorPlaySettings` isn't
+  exposed to Python here. All PIE windows log in as the same account. Once one makes a
+  character, the next window's character creation stops at CONFIRM, and nothing is logged. So
+  a second player needs a second real account on a test server. Each PIE window gets its own
+  `UEDPIE_N` world. Find a widget's world with `get_world()`; its path is under the game
+  instance, not the world.
 
 ## Cosmetic mounted rider — the working recipe
 
