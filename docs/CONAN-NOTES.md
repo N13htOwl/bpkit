@@ -410,10 +410,17 @@ How the game shows armor, found on a throwaway Play character:
     `DYE_INDEX1-4 = 41, 0, 81, 0`. Transmogged to 52421, the shown helmet had dye 0, 0, 0, 0
     (plain bronze on screen). With the helmet slot empty, the real helmet showed with its dye
     (41, 0, 81, 0, green and grey on screen). The real layout kept its dye both times.
+  - Respawn: after a fall death, the new body showed the look on the first frame the controller
+    had it (0.0 s, frame 1). It showed the full look although its real gear was gone (dropped
+    at death). The clock starts when the controller takes the new body, so a body shown before
+    that wouldn't be measured; none was seen on screen.
   - Not tested:
     - The host seeing the client's look: a PIE client can't finish character creation (see below).
     - Different looks per player: PIE players share one account, so they load the same save.
-    - Respawn timing.
+- **Killing a PIE character:** `ConanCharacter.kill_character(...)` returns 0 and does nothing,
+  and `GameplayStatics.apply_damage` is refused ("Immune to this tier of weapon"). A fall
+  works: `set_actor_location` 80 m up, and the character dies on landing. The respawn map
+  counts down 6 s, then respawns at the selected point (Desert) on its own.
 - **Dyeing in game:** the inventory has no Dye action. Place a Dyer's Bench (item 18543;
   `SpawnItem 18543 1` puts it in the hotbar), tap E on it, drag the item into "Item To Dye", then
   click DYE. Pick a channel, then a dye (dye items are 17010 and up; ItemTable `DyeColourID`).
