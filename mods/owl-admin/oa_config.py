@@ -20,7 +20,7 @@ BOARD_SCALE = 1.5
 FONT_BOLD = "/Game/Fonts/Kelson_Sans_Bold.Kelson_Sans_Bold"         # board: Rajdhani 700
 FONT_REGULAR = "/Game/Fonts/Kelson_Sans_Regular.Kelson_Sans_Regular"  # board: Rajdhani 500
 
-VERSION = 1
+VERSION = 2   # v2: overlay hidden until the player has a character (no pawn in char creation)
 
 
 def full(pkg, name):

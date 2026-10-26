@@ -1,13 +1,20 @@
-"""owl-admin step 02: BP_OwlAdminController : ModController -- puts WBP_OwlAlerts on screen.
+"""owl-admin step 02: BP_OwlAdminController : ModController -- puts WBP_OwlAlerts on screen
+while the local player has a character.
 
 Conan auto-spawns every ModController subclass on play, but BEFORE the player exists
-(docs/CONAN-NOTES.md "Persistent mod logic"), so the widget is created on Tick, guarded:
+(docs/CONAN-NOTES.md "Persistent mod logic"), so the widget is driven from Tick. During
+character creation the PlayerController has NO pawn of its own (the body on screen is a
+preview actor seen through a CameraActor; GetPlayerPawn returns a SpectatorPawn; verified in
+PIE 2026-10-26), so "the PC's own pawn is valid" is the gate:
 
 ReceiveTick:
-    IsDedicatedServer?            -> yes: nothing (no screen)
-    IsValid(AlertsWidget)?        -> yes: nothing (already up; the steady-state cost)
+    IsDedicatedServer?               -> yes: nothing (no screen)
     IsValid(GetPlayerController(0))? -> no: try again next tick
-    CreateWidget(WBP_OwlAlerts, OwningPlayer=PC) -> AlertsWidget -> AddToViewport(ZOrder)
+    IsValid(AlertsWidget)?
+      no  -> IsValid(PC.K2_GetPawn)? -> yes: CreateWidget(WBP_OwlAlerts, PC)
+                                            -> AlertsWidget -> AddToViewport(ZOrder)
+      yes -> IsValid(PC.K2_GetPawn)? -> SetVisibility(HitTestInvisible | Collapsed)
+             (re-hides it whenever the pawn is gone again, e.g. death / respawn screens)
 
 CDO: OwlVersion stamped (tell a stale spawned class from the current build), always
 relevant (else the controller never exists on MP clients), 0.5 s tick (it only polls).
@@ -37,6 +44,8 @@ assert unreal.load_object(None, WIDGET_CLS), "run 01_alerts_widget.py first: no 
 GS = "/Script/Engine.GameplayStatics"
 KSL = "/Script/Engine.KismetSystemLibrary"
 USERWIDGET = "/Script/UMG.UserWidget"
+UWIDGET = "/Script/UMG.Widget"
+SLATEVIS = ir.enum_path("/Script/UMG.ESlateVisibility")
 ZORDER = 1000           # above Conan's game HUD
 
 # edit in place (reuse if present): delete+recreate leaves a stale redirector that blocks
@@ -61,30 +70,52 @@ bDds = g.branch(pos=(300, 0))
 g.wire(tick, "then", bDds, "execute")
 g.wire(dds, "ReturnValue", bDds, "Condition", exec=False)
 
-wValid = g.call("IsValid", KSL, pos=(300, 200))
-g.wire(widget_var((100, 320)), "AlertsWidget", wValid, "Object", exec=False)
-bUp = g.branch(pos=(600, 0))
-g.wire(bDds, "else", bUp, "execute")
-g.wire(wValid, "ReturnValue", bUp, "Condition", exec=False)
-
-gpc = g.call("GetPlayerController", GS, pos=(600, 200))
+gpc = g.call("GetPlayerController", GS, pos=(300, 200))
 g.typed_input(gpc, "PlayerIndex", "0", "int")
-pcValid = g.call("IsValid", KSL, pos=(900, 200))
+pcValid = g.call("IsValid", KSL, pos=(600, 200))
 g.wire(gpc, "ReturnValue", pcValid, "Object", exec=False)
-bPc = g.branch(pos=(900, 0))
-g.wire(bUp, "else", bPc, "execute")
+bPc = g.branch(pos=(600, 0))
+g.wire(bDds, "else", bPc, "execute")
 g.wire(pcValid, "ReturnValue", bPc, "Condition", exec=False)
 
-crt = g.create_widget(WIDGET_CLS, pos=(1200, 0))
-g.wire(bPc, "then", crt, "execute")
+wValid = g.call("IsValid", KSL, pos=(900, 200))
+g.wire(widget_var((700, 320)), "AlertsWidget", wValid, "Object", exec=False)
+bUp = g.branch(pos=(900, 0))
+g.wire(bPc, "then", bUp, "execute")
+g.wire(wValid, "ReturnValue", bUp, "Condition", exec=False)
+
+# one pure "player has a character" test, read by both the create and the show/hide branch.
+# The PC's OWN pawn: GameplayStatics.GetPlayerPawn is GetPawnOrSpectator, and during character
+# creation it returns a SpectatorPawn (verified in PIE), so it can't tell creation from play.
+gpp = g.call("K2_GetPawn", "/Script/Engine.Controller", pos=(1100, 400))
+g.wire(gpc, "ReturnValue", gpp, "self", exec=False)
+pawnValid = g.call("IsValid", KSL, pos=(1350, 400))
+g.wire(gpp, "ReturnValue", pawnValid, "Object", exec=False)
+
+# not created yet: create it only once the player has a character
+bPawnNew = g.branch(pos=(1200, -200))
+g.wire(bUp, "else", bPawnNew, "execute")
+g.wire(pawnValid, "ReturnValue", bPawnNew, "Condition", exec=False)
+crt = g.create_widget(WIDGET_CLS, pos=(1500, -200))
+g.wire(bPawnNew, "then", crt, "execute")
 g.wire(gpc, "ReturnValue", crt, "OwningPlayer", exec=False)
-store = g.var_set("AlertsWidget", "object", ir.obj_path(USERWIDGET), pos=(1500, 0))
+store = g.var_set("AlertsWidget", "object", ir.obj_path(USERWIDGET), pos=(1800, -200))
 g.wire(crt, "then", store, "execute")
 g.wire(crt, "ReturnValue", store, "AlertsWidget", exec=False)
-atv = g.call("AddToViewport", USERWIDGET, pos=(1800, 0))
+atv = g.call("AddToViewport", USERWIDGET, pos=(2100, -200))
 g.typed_input(atv, "ZOrder", str(ZORDER), "int")
 g.wire(store, "then", atv, "execute")
-g.wire(widget_var((1600, 200)), "AlertsWidget", atv, "self", exec=False)
+g.wire(widget_var((1900, -20)), "AlertsWidget", atv, "self", exec=False)
+
+# already created: show it while the player has a character, hide it otherwise
+bPawnVis = g.branch(pos=(1200, 200))
+g.wire(bUp, "then", bPawnVis, "execute")
+g.wire(pawnValid, "ReturnValue", bPawnVis, "Condition", exec=False)
+for pin, vis, y in [("then", "HitTestInvisible", 100), ("else", "Collapsed", 300)]:
+    sv = g.call("SetVisibility", UWIDGET, pos=(1600, y))
+    g.typed_input(sv, "InVisibility", vis, "byte", SLATEVIS)
+    g.wire(bPawnVis, pin, sv, "execute")
+    g.wire(widget_var((1400, y + 80)), "AlertsWidget", sv, "self", exec=False)
 
 rep = build.build_graph(FULL, g)
 assert rep["ok"], "controller graph not clean: %r" % rep
