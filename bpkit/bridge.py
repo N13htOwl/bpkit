@@ -426,6 +426,31 @@ def tree_widgets(wbp_ptr):
     return objects_with_outer(wt) if wt else []
 
 
+# UWidgetTree::RootWidget isn't reflected to Python. Its offset was verified on UE 5.8.2
+# (2026-10-26): across 146 shipped /Game/UI WBPs the pointer at +0x38 is always the one
+# tree widget no slot holds as Content (the parentless root).
+_ROOT_WIDGET_OFF = 0x38
+
+
+def root_widget(wbp_ptr):
+    """The UWidget* at the root of a WBP's widget tree (0 when the tree is empty)."""
+    wt = widget_tree(wbp_ptr)
+    return ctypes.c_uint64.from_address(wt + _ROOT_WIDGET_OFF).value if wt else 0
+
+
+def set_root_widget(wbp_ptr, widget_ptr):
+    """Make `widget_ptr` (a widget already in this WBP's tree, e.g. from import_widgets)
+    the tree's RootWidget -- the step ImportWidgetsFromText leaves to the caller.
+    Refuses a widget the tree doesn't own. Mark modified + compile afterwards."""
+    wt = widget_tree(wbp_ptr)
+    if not wt:
+        raise RuntimeError("no WidgetTree on this WBP")
+    if int(widget_ptr) not in objects_with_outer(wt):
+        raise RuntimeError("widget 0x%x is not owned by this WBP's tree" % int(widget_ptr))
+    ctypes.c_uint64.from_address(wt + _ROOT_WIDGET_OFF).value = int(widget_ptr)
+    return root_widget(wbp_ptr) == int(widget_ptr)
+
+
 def export_widgets(widget_ptrs):
     """Serialize UWidget*s to designer copy/paste text (the widget analogue of
     export_nodes). ExportWidgetsToText takes its TArray<UWidget*> BY VALUE and runs
@@ -453,7 +478,7 @@ def import_widgets(wbp_ptr, text):
     """MUTATING: paste widget copy/paste `text` into a WidgetBlueprint, creating real
     UWidgets parented to its widget tree. Returns the imported-widget count (from the
     out-TSet). NOTE: like the designer, this CREATES the widgets but does not itself
-    place a root / re-parent -- the caller sets the tree root (set_root_widget) or
+    place a root / re-parent -- the caller sets the tree root (set_root_widget()) or
     re-parents via the returned slot map. The TMap<FName,UWidgetSlotPair*> out-param is
     accepted into a zeroed buffer (valid empty TMap state) and ignored here."""
     fs = FString.make(text)
