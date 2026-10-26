@@ -14,6 +14,15 @@ Tree (board px x1.5, see oa_config.BOARD_SCALE):
 
 Every TextBlock is a variable, so later steps can set the copy at runtime.
 
+Placement vs Conan's own HUD (measured in PIE 2026-10-26, UMG units): the vitals frame +
+status icons fill the top-left to y=145, so the notice cards sit below them at NOTICES_POS
+instead of the board's (24, 60). The banner keeps the board's top-centre spot: at 16:9 it
+spans x 582-1338, clear of the vitals (x<=357) and the tutorial panel (right 67-392).
+
+Re-running edits the WBP in place: the controller references its class, and delete +
+recreate leaves a stale redirector. Old widgets are moved to the transient package
+(never saved) so the fresh paste keeps its exact names.
+
 Run with Play STOPPED:  python ue_run.py mods/owl-admin/01_alerts_widget.py
 Falls back to /Game/_Scratch/OwlAdmin (DRY RUN) when /Game/Mods/OwlAdmin isn't mounted.
 """
@@ -44,6 +53,7 @@ FULL = MOD.full(PKG, MOD.ALERTS_WBP)
 # ---------------------------------------------------------------- board copy + colours
 ALERT_LABEL = "Server alert"
 ALERT_TEXT = "Server will restart in 10 minutes."
+NOTICES_POS = (24, 170)   # UMG units: Conan's HUD left edge, below its vitals + status icons
 NOTICES = [   # (label, body, accent strip, label colour) -- placeholders straight off the board
     ("Server notice", "[Server message appears here]", "#e5242b", "#f0343a"),
     ("Restriction", "[Active restriction, e.g. building limit]", "#4a1a1d", "#b8a29c"),
@@ -163,23 +173,33 @@ widget("/Script/UMG.CanvasPanel", "OwlAlertsRoot", ["Visibility=HitTestInvisible
         "bAutoSize=True", "ZOrder=1"]),
     ("/Script/UMG.CanvasPanelSlot", "NoticesBox", [
         "LayoutData=(Offsets=(Left=%.6f,Top=%.6f,Right=0.000000,Bottom=0.000000),"
-        "Anchors=(Minimum=(X=0.000000,Y=0.000000),Maximum=(X=0.000000,Y=0.000000)))" % (24 * S, 60 * S),
+        "Anchors=(Minimum=(X=0.000000,Y=0.000000),Maximum=(X=0.000000,Y=0.000000)))" % NOTICES_POS,
         "bAutoSize=True"]),
 ])
 TEXT = "\n".join(reversed(BLOCKS))      # root first, as the designer exports it
 EXPECTED = len(CLS)
 
-# ---------------------------------------------------------------- (re)create the asset
-if eal.does_asset_exist(PATH):
-    assert eal.delete_asset(PATH), "could not delete the previous " + PATH
-factory = unreal.WidgetBlueprintFactory()
-factory.set_editor_property("parent_class", unreal.UserWidget)
-wbp = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
-    MOD.ALERTS_WBP, PKG, unreal.WidgetBlueprint, factory)
-assert wbp, "create_asset failed for " + PATH
+# ---------------------------------------------------------------- create, or empty in place
+wbp = eal.load_asset(PATH)        # load_asset, not does_asset_exist (unreliable; bridge.scratch_blueprint)
+if wbp is None:
+    factory = unreal.WidgetBlueprintFactory()
+    factory.set_editor_property("parent_class", unreal.UserWidget)
+    wbp = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
+        MOD.ALERTS_WBP, PKG, unreal.WidgetBlueprint, factory)
+    assert wbp, "create_asset failed for " + PATH
 wbp_ptr = bp.find_object(FULL)
+old = bp.tree_widgets(wbp_ptr)
+if old:
+    transient = unreal.find_object(None, "/Engine/Transient")
+    assert transient, "transient package not found"
+    bp.set_root_widget(wbp_ptr, 0)
+    for w in old:
+        name = _re.match(r'Begin Object Class=\S+ Name="([^"]+)"', bp.export_widgets([w])).group(1)
+        obj = unreal.find_object(None, "%s:WidgetTree.%s" % (FULL, name))
+        assert obj and obj.rename(None, transient), "could not move old widget out: " + name
+    print("emptied the existing tree: moved %d old widgets to the transient package" % len(old))
 before = bp.tree_widgets(wbp_ptr)
-assert not before, "fresh WBP already has %d widgets; expected an empty tree" % len(before)
+assert not before, "tree still has %d widgets; expected it empty" % len(before)
 
 # ---------------------------------------------------------------- paste + root + compile
 pasted = bp.import_widgets(wbp_ptr, TEXT)

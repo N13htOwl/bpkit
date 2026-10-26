@@ -441,11 +441,12 @@ def root_widget(wbp_ptr):
 def set_root_widget(wbp_ptr, widget_ptr):
     """Make `widget_ptr` (a widget already in this WBP's tree, e.g. from import_widgets)
     the tree's RootWidget -- the step ImportWidgetsFromText leaves to the caller.
-    Refuses a widget the tree doesn't own. Mark modified + compile afterwards."""
+    0 clears the root. Refuses a widget the tree doesn't own. Mark modified + compile
+    afterwards."""
     wt = widget_tree(wbp_ptr)
     if not wt:
         raise RuntimeError("no WidgetTree on this WBP")
-    if int(widget_ptr) not in objects_with_outer(wt):
+    if int(widget_ptr) and int(widget_ptr) not in objects_with_outer(wt):
         raise RuntimeError("widget 0x%x is not owned by this WBP's tree" % int(widget_ptr))
     ctypes.c_uint64.from_address(wt + _ROOT_WIDGET_OFF).value = int(widget_ptr)
     return root_widget(wbp_ptr) == int(widget_ptr)
