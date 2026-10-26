@@ -37,15 +37,7 @@ assert not unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).is_in_play_i
 for f in (MOD.FONT_BOLD, MOD.FONT_REGULAR):
     assert isinstance(eal.load_asset(f), unreal.Font), "font missing on this build: " + f
 
-# mod root if mounted+writable, else scratch dry-run
-if eal.does_directory_exist(MOD.OUTPUT_PKG):
-    PKG = MOD.OUTPUT_PKG
-else:
-    PKG = MOD.SCRATCH_PKG
-    print("#" * 68)
-    print("##  DRY RUN: %s not mounted (OwlAdmin mod not active)" % MOD.OUTPUT_PKG)
-    print("##  building into %s -- NOT shippable from there" % PKG)
-    print("#" * 68)
+PKG = MOD.resolve_pkg()     # mod root if mounted+writable, else scratch dry-run
 PATH = "%s/%s" % (PKG, MOD.ALERTS_WBP)
 FULL = MOD.full(PKG, MOD.ALERTS_WBP)
 

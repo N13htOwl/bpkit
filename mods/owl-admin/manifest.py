@@ -8,6 +8,7 @@ import oa_config as _cfg
 NAME = "owl-admin"
 OUTPUT_PKG = _cfg.OUTPUT_PKG
 
-BUILD = ["01_alerts_widget.py"]
+# Order matters: 02 (controller) CreateWidget-references 01's generated widget class.
+BUILD = ["01_alerts_widget.py", "02_controller.py"]
 
 ASSETS = []
