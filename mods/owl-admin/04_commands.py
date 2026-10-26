@@ -4,20 +4,19 @@
                                            until admin mode is unlocked. Shift+U does the same.
     dc OwlLogin <password>       (server)  check the password; right -> unlock admin mode
     dc OwlLogout                 (server)  lock admin mode again (the menu's Lock button)
-    dc OwlSetPassword <password> (server, Conan admins only)  set the Owl Admin password (the
-                                           admin menu's setup page runs this), mark it set for
-                                           every client, and unlock the caller
+    dc OwlSetPassword <password> (server, Conan admins only)  set or replace the Owl Admin
+                                           password, mark it set for every client, unlock the caller
     dc OwlApply <value> x N      (server, admin mode only)  the admin menu's APPLY: one value per
                                            menu_defs.SETTINGS entry; saved (OwlAdminSettings slot)
                                            and handed to the controller, which pushes the LIVE ones
                                            into Conan's server settings
 
-Login/logout/set-password run ON THE SERVER: the password is read from the server's
-SaveGame (08) and never sent to clients, and unlocking writes the server-owned, replicated
-UnlockedPlayers list on the controller (02) -- via PendingPlayer + OwlUnlockPending, since
-the list belongs to the controller. Results come back as a Conan message box on the caller's
-screen (ClientShowMessageBox is a client RPC). Passwords are one word: the command line is
-split on spaces and only the first word is used.
+The admin menu does NOT use OwlLogin / OwlSetPassword: anything typed or run as a console
+command is written to the log ("Cmd: dc OwlLogin <password>"), so the menu sends passwords
+through the relay's server RPCs instead (10). These two stay as a console fallback (a
+forgotten password: a Conan admin sets a new one), and they do log what is typed. The shared
+server-side logic is oa_auth. Passwords here are one word: the command line is split on
+spaces and only the first word is used.
 
 OwlAdmin: GetGUIModuleController -> GetModule(OwlAdminMenu) valid? no -> LoadModules (the
 merged row landed after the controller loaded its modules); then ToggleModule.
@@ -32,10 +31,11 @@ import unreal
 import os
 from bpkit import bridge as bp, ir, build, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
-for _m in ("oa_config", "menu_defs"):
+for _m in ("oa_config", "menu_defs", "oa_auth"):
     sys.modules.pop(_m, None)
 import oa_config as MOD
 import menu_defs as D
+from oa_auth import Auth
 
 assert not unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).is_in_play_in_editor(), \
     "Play-in-Editor is running -- stop Play first"
@@ -49,30 +49,14 @@ for c in (CTRL_CLS, SG_CLS, SETTINGS_SG_CLS):
 
 DAC = "/Script/ConanSandbox.DataActorCommand"
 GUIMC = "/Script/ConanSandbox.GUIModuleController"
-CPC = "/Script/ConanSandbox.ConanPlayerController"
 GS = "/Script/Engine.GameplayStatics"
 KSL = "/Script/Engine.KismetSystemLibrary"
 KML = "/Script/Engine.KismetMathLibrary"
-KSTR = "/Script/Engine.KismetStringLibrary"
-KTXT = "/Script/Engine.KismetTextLibrary"
 PSTATE = "/Script/Engine.PlayerState"
-SG_CAST = "AsBP Owl Admin Save"
-TITLE = "Owl Admin"
 
 
-# ---------------------------------------------------------------- shared pieces
-def message(g, ev, prev, prev_pin, text, pos):
-    """Conan message box on the CALLING player's screen (ClientShowMessageBox is a client RPC)."""
-    t = g.call("Conv_StringToText", KTXT, pos=(pos[0], pos[1] + 200))
-    g.typed_input(t, "InString", text, "string")
-    title = g.call("Conv_StringToText", KTXT, pos=(pos[0], pos[1] + 350))
-    g.typed_input(title, "InString", TITLE, "string")
-    box = g.call("ClientShowMessageBox", CPC, pos=pos)
-    g.wire(ev, "CallingPlayerController", box, "self", exec=False)
-    g.wire(title, "ReturnValue", box, "Title", exec=False)
-    g.wire(t, "ReturnValue", box, "Message", exec=False)
-    g.wire(prev, prev_pin, box, "execute")
-    return box
+def auth(g, ev):
+    return Auth(g, CTRL_CLS, SG_CLS, MOD.SAVE_SLOT, (ev, "CallingPlayerController"))
 
 
 def has_param(g, ev, pos):
@@ -85,42 +69,6 @@ def has_param(g, ev, pos):
     g.wire(ev, "then", b, "execute")
     g.wire(gt, "ReturnValue", b, "Condition", exec=False)
     return b
-
-
-def controller(g, prev, prev_pin, pos):
-    """GetActorOfClass(BP_OwlAdminController), in the exec chain after prev."""
-    gac = g.call("GetActorOfClass", GS, pos=pos)
-    ap = gac.pin("ActorClass").typed("class", ir.obj_path("/Script/Engine.Actor"), direction="EGPD_Input")
-    ap.set("PinType.bIsUObjectWrapper", "True")
-    ap.set("DefaultObject", '"%s"' % CTRL_CLS)
-    g.wire(prev, prev_pin, gac, "execute")
-    # GetActorOfClass already returns the controller's type (a cast is flagged as redundant);
-    # the controller always exists once the mod is loaded, so no validity branch here
-    gac.pin("ReturnValue").typed("object", ir.obj_path(CTRL_CLS), direction="EGPD_Output")
-    return gac
-
-
-def caller_state(g, ev, pos):
-    """The calling player's PlayerState (pure)."""
-    ps = g.var_get("PlayerState", "object", ir.obj_path(PSTATE), parent="/Script/Engine.Controller", pos=pos)
-    g.wire(ev, "CallingPlayerController", ps, "self", exec=False)
-    return ps
-
-
-def set_pending_and_call(g, ev, prev, prev_pin, event, pos):
-    """controller = GetActorOfClass(BP_OwlAdminController); controller.PendingPlayer =
-    caller's PlayerState; controller.<event>(). Returns the call node (exec out "then")."""
-    x, y = pos
-    gac = controller(g, prev, prev_pin, (x, y))
-    ps = caller_state(g, ev, (x + 300, y + 250))
-    sp = g.var_set("PendingPlayer", "object", ir.obj_path(PSTATE), pos=(x + 600, y), parent=CTRL_CLS)
-    g.wire(gac, "ReturnValue", sp, "self", exec=False)
-    g.wire(ps, "PlayerState", sp, "PendingPlayer", exec=False)
-    g.wire(gac, "then", sp, "execute")
-    call = g.call(event, CTRL_CLS, pos=(x + 900, y))
-    g.wire(gac, "ReturnValue", call, "self", exec=False)
-    g.wire(sp, "then", call, "execute")
-    return call
 
 
 def build_command(name, graph_fn):
@@ -162,90 +110,47 @@ def open_menu(g, ev):
 
 # ---------------------------------------------------------------- dc OwlLogin <password> (server)
 def login(g, ev):
+    a = auth(g, ev)
     bHas = has_param(g, ev, (0, 0))
-    message(g, ev, bHas, "else", "Type the password after the command: dc OwlLogin <password>", (600, 600))
-    dse = g.call("DoesSaveGameExist", GS, pos=(600, 0))
-    g.typed_input(dse, "SlotName", MOD.SAVE_SLOT, "string")
-    g.typed_input(dse, "UserIndex", "0", "int")
-    g.wire(bHas, "then", dse, "execute")
-    bSet = g.branch(pos=(850, 0))
-    g.wire(dse, "then", bSet, "execute")
-    g.wire(dse, "ReturnValue", bSet, "Condition", exec=False)
-    no_pw = "No Owl Admin password is set yet. A Conan admin sets one with: dc OwlSetPassword <password>"
-    message(g, ev, bSet, "else", no_pw, (1100, 600))
-    load = g.call("LoadGameFromSlot", GS, pos=(1100, 0))
-    g.typed_input(load, "SlotName", MOD.SAVE_SLOT, "string")
-    g.typed_input(load, "UserIndex", "0", "int")
-    g.wire(bSet, "then", load, "execute")
-    cast = g.cast(SG_CLS, pos=(1400, 0))
-    g.wire(load, "ReturnValue", cast, "Object", exec=False)
-    g.wire(load, "then", cast, "execute")
-    message(g, ev, cast, "CastFailed", no_pw, (1700, 900))
-    pw = g.var_get("Password", "string", parent=SG_CLS, pos=(1400, 300))
-    g.wire(cast, SG_CAST, pw, "self", exec=False)
-    first = g.array_get(ev, "Parameters", 0, (1400, 450), elem_cat="string")
-    eq = g.call("EqualEqual_StrStr", KSTR, pos=(1700, 300))     # case-sensitive compare
-    g.wire(first, "Output", eq, "A", exec=False)
-    g.wire(pw, "Password", eq, "B", exec=False)
-    bOk = g.branch(pos=(1700, 0))
-    g.wire(cast, "then", bOk, "execute")
-    g.wire(eq, "ReturnValue", bOk, "Condition", exec=False)
-    message(g, ev, bOk, "else", "Wrong password.", (2000, 600))
-    done = set_pending_and_call(g, ev, bOk, "then", "OwlUnlockPending", (2000, 0))
-    message(g, ev, done, "then", "Admin mode unlocked. Press Shift+U to open the admin menu.", (3000, 0))
+    a.message(bHas, "else", "Type the password after the command: dc OwlLogin <password>", (600, 600))
+    first = g.array_get(ev, "Parameters", 0, (600, 300), elem_cat="string")
+    a.check_password(bHas, "then", (first, "Output"), (600, 0))
 
 
 # ---------------------------------------------------------------- dc OwlLogout (server)
 def logout(g, ev):
-    done = set_pending_and_call(g, ev, ev, "then", "OwlLockPending", (300, 0))
-    message(g, ev, done, "then", "Admin mode locked.", (1300, 0))
+    a = auth(g, ev)
+    done = a.set_pending_and_call(ev, "then", "OwlLockPending", (300, 0))
+    a.message(done, "then", "Admin mode locked.", (1300, 0))
 
 
 # ---------------------------------------------------------------- dc OwlSetPassword <password> (server)
 def set_password(g, ev):
+    a = auth(g, ev)
     bHas = has_param(g, ev, (0, 0))
-    message(g, ev, bHas, "else", "Type the new password after the command (one word): dc OwlSetPassword <password>",
-            (600, 600))
-    crt = g.call("CreateSaveGameObject", GS, pos=(600, 0))
-    cp = crt.pin("SaveGameClass").typed("class", ir.obj_path("/Script/Engine.SaveGame"), direction="EGPD_Input")
-    cp.set("PinType.bIsUObjectWrapper", "True")
-    cp.set("DefaultObject", '"%s"' % SG_CLS)
-    # CreateSaveGameObject narrows ReturnValue to the class passed (as in mounted-followers 04)
-    crt.pin("ReturnValue").typed("object", ir.obj_path(SG_CLS), direction="EGPD_Output")
-    g.wire(bHas, "then", crt, "execute")
+    a.message(bHas, "else", "Type the new password after the command (one word): dc OwlSetPassword <password>",
+              (600, 600))
     first = g.array_get(ev, "Parameters", 0, (600, 300), elem_cat="string")
-    sp = g.var_set("Password", "string", pos=(900, 0), parent=SG_CLS)
-    g.wire(crt, "ReturnValue", sp, "self", exec=False)
-    g.wire(first, "Output", sp, "Password", exec=False)
-    g.wire(crt, "then", sp, "execute")
-    sav = g.call("SaveGameToSlot", GS, pos=(1200, 0))
-    g.typed_input(sav, "SlotName", MOD.SAVE_SLOT, "string")
-    g.typed_input(sav, "UserIndex", "0", "int")
-    g.wire(crt, "ReturnValue", sav, "SaveGameObject", exec=False)
-    g.wire(sp, "then", sav, "execute")
-    # tell every client a password now exists (admin menus leave the setup page), and unlock the
-    # Conan admin who set it so they go straight into the menu
-    marked = set_pending_and_call(g, ev, sav, "then", "OwlPasswordSetPending", (1500, 0))
-    done = set_pending_and_call(g, ev, marked, "then", "OwlUnlockPending", (2500, 0))
-    message(g, ev, done, "then", "Owl Admin password set. Admin mode unlocked.", (3500, 0))
+    a.store_password(bHas, "then", (first, "Output"), (600, 0))
 
 
 # ---------------------------------------------------------------- dc OwlApply <value> x N (server)
 def apply_settings(g, ev):
     """Only for players in admin mode (UnlockedPlayers, checked here on the server: the command
     row can't require Conan admin, since Owl admins needn't be). Exactly one value per setting."""
-    gac = controller(g, ev, "then", (0, 0))
+    a = auth(g, ev)
+    gac = a.controller(ev, "then", (0, 0))
     arr = g.array_var("UnlockedPlayers", pos=(250, 250), elem_cat="object", elem_sub=ir.obj_path(PSTATE),
                       parent=CTRL_CLS)
     g.wire(gac, "ReturnValue", arr, "self", exec=False)
     has = g.array_fn("Array_Contains", pos=(500, 250), elem_cat="object", elem_sub=ir.obj_path(PSTATE))
     g.array_item_pin(has, "ItemToFind", "object", ir.obj_path(PSTATE))
     g.wire(arr, "UnlockedPlayers", has, "TargetArray", exec=False)
-    g.wire(caller_state(g, ev, (250, 400)), "PlayerState", has, "ItemToFind", exec=False)
+    g.wire(a.caller_state((250, 400)), "PlayerState", has, "ItemToFind", exec=False)
     bIn = g.branch(pos=(500, 0))
     g.wire(gac, "then", bIn, "execute")
     g.wire(has, "ReturnValue", bIn, "Condition", exec=False)
-    message(g, ev, bIn, "else", "Admin mode is locked. Log in on the admin menu first.", (800, 700))
+    a.message(bIn, "else", "Admin mode is locked. Log in on the admin menu first.", (800, 700))
     n = g.array_len(ev, "Parameters", (800, 250), elem_cat="string")
     eq = g.call("EqualEqual_IntInt", KML, pos=(1050, 250))
     g.wire(n, "ReturnValue", eq, "A", exec=False)
@@ -253,8 +158,8 @@ def apply_settings(g, ev):
     bN = g.branch(pos=(1050, 0))
     g.wire(bIn, "then", bN, "execute")
     g.wire(eq, "ReturnValue", bN, "Condition", exec=False)
-    message(g, ev, bN, "else", "Settings not applied: the menu and the server are on different Owl Admin "
-                               "versions (expected %d values)." % len(D.SETTINGS), (1300, 700))
+    a.message(bN, "else", "Settings not applied: the menu and the server are on different Owl Admin "
+                          "versions (expected %d values)." % len(D.SETTINGS), (1300, 700))
     crt = g.call("CreateSaveGameObject", GS, pos=(1300, 0))
     cp = crt.pin("SaveGameClass").typed("class", ir.obj_path("/Script/Engine.SaveGame"), direction="EGPD_Input")
     cp.set("PinType.bIsUObjectWrapper", "True")
@@ -280,7 +185,7 @@ def apply_settings(g, ev):
     call = g.call("OwlSettingsPending", CTRL_CLS, pos=(2500, 0))
     g.wire(gac, "ReturnValue", call, "self", exec=False)
     g.wire(sp, "then", call, "execute")
-    message(g, ev, call, "then", "Restrictions applied and saved on the server.", (2800, 0))
+    a.message(call, "then", "Restrictions applied and saved on the server.", (2800, 0))
 
 
 BUILDERS = {"OwlAdmin": open_menu, "OwlLogin": login, "OwlLogout": logout, "OwlSetPassword": set_password,

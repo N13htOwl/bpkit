@@ -16,6 +16,8 @@ MENU_WBP = "WBP_OwlAdminMenu"         # Admin Restrictions Menu board, behind th
 PLAYER_MENU_WBP = "WBP_OwlPlayerMenu"  # player menu: the player-facing boards as tabs
 SAVEGAME = "BP_OwlAdminSave"          # SaveGame holding the admin password (server side only)
 SAVE_SLOT = "OwlAdmin"                # its slot name (Saved/SaveGames/OwlAdmin.sav on the server)
+RELAY = "BP_OwlRelay"                 # one per player, owned by their PlayerController: carries
+                                      # passwords to the server as RPCs, so they never hit the log
 SETTINGS_SAVEGAME = "BP_OwlSettingsSave"   # SaveGame holding the applied menu settings (server side only)
 SETTINGS_SLOT = "OwlAdminSettings"         # its own slot, so saving settings never touches the password
 
@@ -55,11 +57,12 @@ BOARD_SCALE = 1.5
 FONT_BOLD = "/Game/Fonts/Kelson_Sans_Bold.Kelson_Sans_Bold"         # board: Rajdhani 700
 FONT_REGULAR = "/Game/Fonts/Kelson_Sans_Regular.Kelson_Sans_Regular"  # board: Rajdhani 500
 
-VERSION = 8   # v2: hidden until the player has a character; v3: notice cards moved below Conan's
+VERSION = 9   # v2: hidden until the player has a character; v3: notice cards moved below Conan's
               # vitals; v4: hidden while a menu has the mouse cursor up; v5: `dc OwlAdmin` menu;
               # v6: Left Shift+U hotkey (polled; didn't work); v7: Shift+U / Shift+I as input
               # actions, Owl Admin login, player menu; v8: APPLY saves settings on the server and
-              # pushes the LIVE ones into Conan's server settings
+              # pushes the LIVE ones into Conan's server settings; v9: the menu sends passwords
+              # through a per-player relay RPC instead of a logged console command
 
 
 def full(pkg, name):

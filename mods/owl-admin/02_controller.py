@@ -8,6 +8,9 @@ preview actor seen through a CameraActor; GetPlayerPawn returns a SpectatorPawn;
 PIE 2026-10-26), so "the PC's own pawn is valid" is the gate:
 
 ReceiveTick:
+    HasAuthority?                    -> yes: every PlayerController not in RelayOwners gets a
+                                        BP_OwlRelay (10) spawned with it as Owner -- the admin
+                                        menu sends passwords through it as RPCs
     IsDedicatedServer?               -> yes: nothing (no screen)
     IsValid(GetPlayerController(0))? -> no: try again next tick
     IsValid(AlertsWidget)?
@@ -92,6 +95,15 @@ bel.add_member_variable(bp_obj, "PendingPlayer", ps_type)    # server-only hand-
 bel.add_member_variable(bp_obj, "PasswordIsSet", bel.get_basic_type_by_name("bool"))
 bel.set_blueprint_variable_replication(bp_obj, "PasswordIsSet", unreal.BlueprintVariableReplication.REPLICATED)
 REPL = unreal.BlueprintVariableReplication.REPLICATED
+# the per-player relay (10 fills it in): created here if missing so the spawn below can name it
+RELAY_CLS = MOD.full(PKG, MOD.RELAY) + "_C"
+if not unreal.load_object(None, RELAY_CLS):
+    _relay, _ = bp.scratch_blueprint(pkg=PKG, name=MOD.RELAY, parent=unreal.Actor)
+    bel.compile_blueprint(_relay)
+    unreal.EditorAssetLibrary.save_asset("%s/%s" % (PKG, MOD.RELAY))
+assert unreal.load_object(None, RELAY_CLS), "could not create " + RELAY_CLS
+actor_t = bel.get_object_reference_type(unreal.Actor.static_class())
+bel.add_member_variable(bp_obj, "RelayOwners", bel.get_array_type(actor_t))   # server: players given a relay
 strings_t = bel.get_array_type(bel.get_basic_type_by_name("string"))
 for var, vtype, replicated in [("AppliedSettings", strings_t, True),     # the saved menu values
                                ("PendingSettings", strings_t, False),    # server-only hand-off from OwlApply
@@ -112,7 +124,41 @@ tick = g.event("ReceiveTick", pos=(0, 0))
 
 dds = g.call("IsDedicatedServer", KSL, pos=(0, 200))
 bDds = g.branch(pos=(300, 0))
-g.wire(tick, "then", bDds, "execute")
+
+# Server first: give every PlayerController without one a relay (10), owned by that player so
+# their menu can call its Run-on-Server events. RelayOwners remembers who has one.
+tAuth = g.call("HasAuthority", "/Script/Engine.Actor", pos=(-1800, 200))
+bTickAuth = g.branch(pos=(-1800, 0))
+g.wire(tick, "then", bTickAuth, "execute")
+g.wire(tAuth, "ReturnValue", bTickAuth, "Condition", exec=False)
+pcs = g.get_all_actors("/Script/Engine.PlayerController", pos=(-1550, 0))
+g.wire(bTickAuth, "then", pcs, "execute")
+each = g.foreach("/Script/Engine.Actor", pos=(-1250, 0))
+g.wire(pcs, "then", each, "Exec")
+g.wire(pcs, "OutActors", each, "Array", exec=False)
+owners = g.array_var("RelayOwners", pos=(-1000, 300), elem_cat="object", elem_sub=ir.obj_path("/Script/Engine.Actor"))
+known = g.array_fn("Array_Contains", pos=(-750, 300), elem_cat="object", elem_sub=ir.obj_path("/Script/Engine.Actor"))
+g.array_item_pin(known, "ItemToFind", "object", ir.obj_path("/Script/Engine.Actor"))
+g.wire(owners, "RelayOwners", known, "TargetArray", exec=False)
+g.wire(each, "Array Element", known, "ItemToFind", exec=False)
+bKnown = g.branch(pos=(-750, 0))
+g.wire(each, "LoopBody", bKnown, "execute")
+g.wire(known, "ReturnValue", bKnown, "Condition", exec=False)
+spawn = g.node("K2Node_SpawnActorFromClass", [], base="SpawnActor", pos=(-500, 100))
+sc = spawn.pin("Class").typed("class", ir.obj_path("/Script/Engine.Actor"), direction="EGPD_Input")
+sc.set("DefaultObject", '"%s"' % RELAY_CLS)
+xf = g.call("MakeTransform", "/Script/Engine.KismetMathLibrary", pos=(-750, 450))   # a relay has no body
+g.wire(xf, "ReturnValue", spawn, "SpawnTransform", exec=False)
+g.wire(each, "Array Element", spawn, "Owner", exec=False)
+g.wire(bKnown, "else", spawn, "execute")
+remember = g.array_fn("Array_Add", pos=(-200, 100), elem_cat="object", elem_sub=ir.obj_path("/Script/Engine.Actor"))
+g.array_item_pin(remember, "NewItem", "object", ir.obj_path("/Script/Engine.Actor"))
+g.wire(g.array_var("RelayOwners", pos=(-450, 400), elem_cat="object", elem_sub=ir.obj_path("/Script/Engine.Actor")),
+       "RelayOwners", remember, "TargetArray", exec=False)
+g.wire(each, "Array Element", remember, "NewItem", exec=False)
+g.wire(spawn, "then", remember, "execute")
+g.wire(each, "Completed", bDds, "execute")
+g.wire(bTickAuth, "else", bDds, "execute")
 g.wire(dds, "ReturnValue", bDds, "Condition", exec=False)
 
 gpc = g.call("GetPlayerController", GS, pos=(300, 200))

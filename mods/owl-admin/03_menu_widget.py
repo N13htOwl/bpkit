@@ -17,9 +17,10 @@ and Conan's GUIModuleController owns its cursor, input, Esc and the Shift+U togg
 Graph:
     TabBtn_<tab>.OnClicked -> TabPages.SetActiveWidgetIndex(i)
     CloseBtn.OnClicked     -> ToggleModule(OwlAdminMenu)
-    UnlockBtn.OnClicked    -> run "dc OwlLogin <PasswordBox text>" as the owning player (the
-                              server checks it, 04); clear the box
-    SetPwBtn.OnClicked     -> run "dc OwlSetPassword <SetupBox text>" (Conan admins only); clear
+    UnlockBtn.OnClicked    -> OwlServerLogin(PasswordBox text) on the owning player's relay (a
+                              server RPC, 10 -- not a console command, which would be logged);
+                              clear the box
+    SetPwBtn.OnClicked     -> OwlServerSetPassword(SetupBox text) the same way (Conan admins only)
     LockBtn.OnClicked      -> run "dc OwlLogout"
     Tick                   -> tab highlight; Gate = 1 if the owning player's PlayerState is in
                               BP_OwlAdminController.UnlockedPlayers (replicated from the
@@ -182,8 +183,8 @@ def form_page(page, title, hint, box, hidden, btn, label, note, placeholder="Pas
 # Gate 0: login. Gate 2: first-time setup, shown while the server reports no password (PasswordIsSet).
 login = form_page("Login", "ADMIN LOGIN", "Enter the Owl Admin password to unlock admin mode.",
                   "PasswordBox", True, "UnlockBtn", "UNLOCK",
-                  "The server checks the password. Forgot it? A Conan admin can set a new one in the console: "
-                  "dc OwlSetPassword <password>")
+                  "The server checks the password. Forgot it? A Conan admin can set a new one in the console "
+                  "with dc OwlSetPassword <password> (the console log keeps what you type there).")
 setup = form_page("Setup", "SET ADMIN PASSWORD",
                   "No Owl Admin password is set yet. Choose one: one word, capitals matter.",
                   "SetupBox", False, "SetPwBtn", "SET PASSWORD",
@@ -229,25 +230,47 @@ def run_command(prev, prev_pin, command_node_pin, pos):
     return ex
 
 
-def submit_box(btn, box, command, y):
-    """<btn> click -> run "<command> <box text>" as the owning player, then clear the box."""
+RELAY_CLS = MOD.full(PKG, MOD.RELAY) + "_C"
+
+
+def submit_box(btn, box, event, y):
+    """<btn> click -> <event>(box text) on the owning player's relay (10): a Run-on-Server RPC,
+    so the password reaches the server without a console command (those are logged). Then
+    clear the box. On a client only its own relay exists; a listen server sees every
+    player's, hence the owner check."""
     ev = clicked(g, btn, (0, y))
-    gt = g.call("GetText", ETB, pos=(250, y + 200))
-    g.wire(g.var_get(box, "object", ir.obj_path(ETB), pos=(0, y + 200)), box, gt, "self", exec=False)
-    ts = g.call("Conv_TextToString", KTXT, pos=(500, y + 200))
+    gt = g.call("GetText", ETB, pos=(250, y + 300))
+    g.wire(g.var_get(box, "object", ir.obj_path(ETB), pos=(0, y + 300)), box, gt, "self", exec=False)
+    ts = g.call("Conv_TextToString", KTXT, pos=(500, y + 300))
     g.wire(gt, "ReturnValue", ts, "InText", exec=False)
-    cat = g.call("Concat_StrStr", KSTR, pos=(750, y + 200))
-    g.typed_input(cat, "A", command + " ", "string")
-    g.wire(ts, "ReturnValue", cat, "B", exec=False)
-    ex = run_command(ev, "then", (cat, "ReturnValue"), (1000, y))
-    clr = g.call("SetText", ETB, pos=(1300, y))
-    g.wire(g.var_get(box, "object", ir.obj_path(ETB), pos=(1100, y + 200)), box, clr, "self", exec=False)
-    g.wire(ex, "then", clr, "execute")
+    relays = g.get_all_actors(RELAY_CLS, pos=(250, y))
+    g.wire(ev, "then", relays, "execute")
+    each = g.foreach("/Script/Engine.Actor", pos=(550, y))
+    g.wire(relays, "then", each, "Exec")
+    g.wire(relays, "OutActors", each, "Array", exec=False)
+    cast = g.cast(RELAY_CLS, pos=(850, y))
+    g.wire(each, "Array Element", cast, "Object", exec=False)
+    g.wire(each, "LoopBody", cast, "execute")
+    owner = g.call("GetOwner", "/Script/Engine.Actor", pos=(850, y + 300))
+    g.wire(cast, "AsBP Owl Relay", owner, "self", exec=False)
+    mine = g.call("EqualEqual_ObjectObject", KML, pos=(1100, y + 300))
+    g.wire(owner, "ReturnValue", mine, "A", exec=False)
+    g.wire(owning_player((850, y + 450)), "ReturnValue", mine, "B", exec=False)
+    bMine = g.branch(pos=(1150, y))
+    g.wire(cast, "then", bMine, "execute")
+    g.wire(mine, "ReturnValue", bMine, "Condition", exec=False)
+    send = g.call(event, RELAY_CLS, pos=(1450, y))
+    g.wire(cast, "AsBP Owl Relay", send, "self", exec=False)
+    g.wire(ts, "ReturnValue", send, "Password", exec=False)
+    g.wire(bMine, "then", send, "execute")
+    clr = g.call("SetText", ETB, pos=(850, y - 250))
+    g.wire(g.var_get(box, "object", ir.obj_path(ETB), pos=(650, y - 150)), box, clr, "self", exec=False)
+    g.wire(each, "Completed", clr, "execute")
 
 
 # Unlock: the server checks the password. Set password: the server saves it (Conan admins only).
-submit_box("UnlockBtn", "PasswordBox", "dc OwlLogin", 5200)
-submit_box("SetPwBtn", "SetupBox", "dc OwlSetPassword", 6200)
+submit_box("UnlockBtn", "PasswordBox", "OwlServerLogin", 5200)
+submit_box("SetPwBtn", "SetupBox", "OwlServerSetPassword", 6200)
 
 # Lock: "dc OwlLogout"
 lev = clicked(g, "LockBtn", (0, 5800))

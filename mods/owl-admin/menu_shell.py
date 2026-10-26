@@ -189,6 +189,12 @@ class Shell:
         """Paste into a WindowRoot WBP (a GUIModule window), set the root, compile, verify."""
         from umg_text import prepare_wbp, verify_tree
         u = self.u
+        # An open UMG designer tab keeps its own idea of the widget tree: rebuilding under it left
+        # a deleted widget's GUID in WidgetVariableNameToGuidMap, the compiler's ensure fired and the
+        # editor crashed (2026-10-26). Close the menu's editor first; a build overwrites it anyway.
+        existing = eal.load_asset("%s/%s" % (pkg, name))
+        if existing:
+            unreal.get_editor_subsystem(unreal.AssetEditorSubsystem).close_all_editors_for_asset(existing)
         wbp, wbp_ptr = prepare_wbp(eal, bp, pkg, name, full, parent=unreal.WindowRoot)
         pasted = bp.import_widgets(wbp_ptr, u.render())
         print("pasted %d/%d widgets" % (pasted, len(u.cls)))

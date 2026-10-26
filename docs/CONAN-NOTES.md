@@ -315,6 +315,21 @@ and neither did a GUIModule object constructed by hand (it isn't in the controll
   (`HasAuthority` → `DoesSaveGameExist`), because clients can't see the server's save. While it's
   false the menu shows a "set password" page; setting it (Conan admins only) unlocks the setter.
   Don't make users type console commands into a text box: they won't know the password doesn't exist yet.
+- **Never send a secret as a console command.** Every console command, including one a widget
+  runs with `ExecuteConsoleCommand`, is written to the log as `Cmd: dc OwlLogin <password>`,
+  and Conan also keeps a server command history. Send it as a **Run-on-Server RPC** instead
+  (owl-admin v9): a `K2Node_CustomEvent` with `FunctionFlags=2097344` (Net | NetReliable |
+  NetServer) plus a `CustomProperties UserDefinedPin` for the string. A client may only call
+  server RPCs on actors its own connection owns, so the always-relevant ModController can't
+  carry it. The server spawns one small relay actor per PlayerController with
+  `K2Node_SpawnActorFromClass` (`Owner` = the PC; `SpawnTransform` must be wired, e.g. `MakeTransform`;
+  CDO `replicates`, `only_relevant_to_owner`), and the menu calls the RPC on the relay whose
+  `GetOwner` is its owning player. Verify the flags after compiling: `EFunctionFlags` at 0xd0
+  of the generated UFunction (INTERNALS §10).
+- **Close a WBP's editor tab before rebuilding its tree.** With the UMG designer open on the
+  menu, a rebuild left a deleted widget's GUID in `WidgetVariableNameToGuidMap`. The next
+  compile hit the `SeenVariableNames.Contains` ensure in WidgetBlueprintCompiler, and the
+  editor crashed (2026-10-26). `AssetEditorSubsystem.close_all_editors_for_asset` first.
 - **Rebuilding a BP with custom events:** clear the graph and compile *before* re-pasting. The
   old compiled class still has functions with those names, so the paste renames the events to
   `CustomEvent`, `CustomEvent_1` and other BPs' calls to them drop.
