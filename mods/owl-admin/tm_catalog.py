@@ -3,15 +3,18 @@
     entries = catalog(unreal)   # [{"id", "slot", "cat", "name", "icon"}] sorted by slot, category, name
 
 Every ItemTable row worn in one of the five transmog slots (menu_defs.TM_SLOTS: EquipLocation
-3-7) is an appearance. Baked into the player menu as arrays (07), so the menu needs no
-data-table reads at runtime. Names are the English text from the table's NSLOCTEXT values;
-rows named through a string table (LOCTABLE, ~20, unreadable from Python here) and dev rows
-("xxx_...") are skipped. About half the wearables have no icon (icon = "").
+3-7) is an appearance, if EquipmentVariationTable gives it a mesh for that slot (its SlotType,
+menu_defs.TM_LAYOUT: the character shows it by putting the item id in that layout member).
+Baked into the player menu as arrays (07), so the menu needs no data-table reads at runtime.
+Names are the English text from the table's NSLOCTEXT values; rows named through a string table
+(LOCTABLE, ~20, unreadable from Python here) and dev rows ("xx...") are skipped. About half the
+wearables have no icon (icon = "").
 """
 import json
 import re
 
 ITEM_TABLE = "/Game/Items/ItemTable"
+VARIATION_TABLE = "/Game/Items/EquipmentVariationTable"
 _NSLOC = re.compile(r'NSLOCTEXT\(\s*"[^"]*"\s*,\s*"[^"]*"\s*,\s*"((?:[^"\\]|\\.)*)"\s*\)')
 _DEV_ICON = "icon_DEV_needs_icon"
 
@@ -35,12 +38,17 @@ def catalog(unreal):
         for gc in gui or ():
             cat_of[gc] = i
     other = [i for i, (_k, _l, gui) in enumerate(D.TM_CATS) if gui == ()][0]
+    vt = unreal.load_asset(VARIATION_TABLE)
+    assert vt, "no equipment variation table at " + VARIATION_TABLE
+    mesh_slot = {str(v["Name"]): v["SlotType"] for v in json.loads(lib.export_data_table_to_json_string(vt))}
     out = []
     for r in json.loads(lib.export_data_table_to_json_string(dt)):
         rid = str(r.get("Name"))               # the JSON export's "Name" key is the row name
         loc = r.get("EquipLocation")
-        if loc not in slot_of or rid not in display or display[rid].lower().startswith("xxx"):
+        if loc not in slot_of or rid not in display or display[rid].lower().startswith("xx"):
             continue
+        if mesh_slot.get(rid) != D.TM_LAYOUT[D.TM_SLOTS[slot_of[loc]][0]][0]:
+            continue                           # no mesh, or one for another slot (2 odd rows)
         icon = str(r.get("Icon") or "")
         if icon == "None" or _DEV_ICON in icon:
             icon = ""                          # about half the wearables have no icon: the cell shows a gem

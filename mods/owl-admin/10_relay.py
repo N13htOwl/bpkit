@@ -8,15 +8,31 @@ written to the log ("Cmd: dc OwlLogin <password>"), an RPC's arguments are not.
                                     set for every client, unlock the owner
 
 A client may only call Run-on-Server events on actors its own connection owns, which is why
-each player has their own relay (owned = only relevant to that player, too). The checks are
-oa_auth, the same as the console commands (04); the caller is the relay's owner.
+each player has their own relay. The checks are oa_auth, the same as the console commands
+(04); the caller is the relay's owner.
 
-Transmog (the player menu's tab, 07): TmLook / TmOutfitNames / TmOutfitLooks / TmVersion,
-replicated to the owner. BeginPlay (server) loads them from the owner's OwlTransmog_<net id>
-save; OwlServerTmApply(Look) and OwlServerTmSaveOutfit(Name, Look) (Run on Server) change and
-save them.
+Transmog (the player menu's tab, 07): TmLook (replicated: everyone sees every look) and the
+owner-only TmOutfitNames / TmOutfitLooks, sent by OwlClientTm (Run on owning Client; TmClientVer
+goes up on arrival so the open menu reloads). BeginPlay (server) loads them from the owner's
+OwlTransmog_<net id> save; OwlServerTmApply(Look) and OwlServerTmSaveOutfit(Name, Look)
+(Run on Server) change and save them. Every player sees every look, so the relay is always
+relevant (not only to its owner) and carries TmPawn, its player's character (other players'
+controllers don't exist on a client). The outfits stay private: they aren't replicated, only
+sent to the owner. OwlServerTmRequest asks for them again (the owner's client, once, in case
+the BeginPlay send arrived before its relay existed there).
 
-Tick (server, 1 s): the owner is gone (player left) -> destroy the relay.
+Tick (0.1 s):
+    server: the owner is gone (player left) -> destroy the relay; else TmPawn = the owner's pawn
+    owner's client: the first time, OwlServerTmRequest
+    every machine with a screen: show TmLook on TmPawn. The character's real layout
+        (BasePlayerChar_C.CharacterLayout, which the game saves and equipment changes) is broken
+        apart and made again with each picked slot's item id in its CharacterMeshLayout member
+        (menu_defs.TM_LAYOUT), and that copy goes to the customization component's
+        ToggleCharacterLayoutOverride. The game resolves it like worn gear (male/female mesh,
+        hidden hair, tucked legs), never saves it, and it doesn't change stats. A picked slot's
+        dye is cleared (the real item's dye would tint the transmog piece). Redone only when
+        the result changes (TmApplied: the pawn + the ten mesh ids); an empty look turns it off.
+        The live layout is only ever read: writing to it rewrites the player's character.
 
 Run with Play STOPPED, after 02 (which creates the empty asset so it can spawn it) and 08:
     python ue_run.py mods/owl-admin/10_relay.py
@@ -52,21 +68,33 @@ CPC = "/Script/ConanSandbox.ConanPlayerController"
 KSL = "/Script/Engine.KismetSystemLibrary"
 KML = "/Script/Engine.KismetMathLibrary"
 KSTR = "/Script/Engine.KismetStringLibrary"
-# K2Node_CustomEvent "Replicates: Run on Server, Reliable" = FUNC_Net | FUNC_NetReliable | FUNC_NetServer
+# K2Node_CustomEvent "Replicates: Run on Server, Reliable" = FUNC_Net | FUNC_NetReliable | FUNC_NetServer;
+# "Run on owning Client, Reliable" = FUNC_Net | FUNC_NetReliable | FUNC_NetClient
 RUN_ON_SERVER = 0x200000 | 0x80 | 0x40
-EVENTS = ("OwlServerLogin", "OwlServerSetPassword", "OwlServerTmApply", "OwlServerTmSaveOutfit")
+RUN_ON_OWNING_CLIENT = 0x1000000 | 0x80 | 0x40
+EVENTS = {"OwlServerLogin": RUN_ON_SERVER, "OwlServerSetPassword": RUN_ON_SERVER, "OwlServerTmApply": RUN_ON_SERVER,
+          "OwlServerTmSaveOutfit": RUN_ON_SERVER, "OwlServerTmRequest": RUN_ON_SERVER,
+          "OwlClientTm": RUN_ON_OWNING_CLIENT}
 
 TM_SG_CLS = MOD.full(PKG, MOD.TM_SAVEGAME) + "_C"
 assert unreal.load_object(None, TM_SG_CLS), "build 08 first: no " + TM_SG_CLS
 
 bel = unreal.BlueprintEditorLibrary
 bp_obj, _ = bp.scratch_blueprint(pkg=PKG, name=MOD.RELAY, parent=unreal.Actor)
-# transmog state, replicated to the owner only (the relay is only relevant to its owner)
+# transmog state. TmLook + TmPawn replicate to every player (the relay is always relevant);
+# the outfits are the owner's alone, so they don't replicate: OwlClientTm sends them to the owner
 strings_t = bel.get_array_type(bel.get_basic_type_by_name("string"))
-for var, vtype in (("TmLook", strings_t), ("TmOutfitNames", strings_t), ("TmOutfitLooks", strings_t),
-                   ("TmVersion", bel.get_basic_type_by_name("int"))):
+REPL = unreal.BlueprintVariableReplication
+for var, vtype, repl in (("TmLook", strings_t, REPL.REPLICATED),
+                         ("TmPawn", bel.get_object_reference_type(unreal.Pawn.static_class()), REPL.REPLICATED),
+                         ("TmOutfitNames", strings_t, REPL.NONE), ("TmOutfitLooks", strings_t, REPL.NONE),
+                         ("TmClientVer", bel.get_basic_type_by_name("int"), REPL.NONE),  # + 1 per OwlClientTm
+                         ("TmAsked", bel.get_basic_type_by_name("bool"), REPL.NONE),     # sent OwlServerTmRequest
+                         # what this machine last showed on TmPawn
+                         ("TmApplied", bel.get_basic_type_by_name("string"), REPL.NONE),
+                         ("TmOn", bel.get_basic_type_by_name("bool"), REPL.NONE)):
     bel.add_member_variable(bp_obj, var, vtype)
-    bel.set_blueprint_variable_replication(bp_obj, var, unreal.BlueprintVariableReplication.REPLICATED)
+    bel.set_blueprint_variable_replication(bp_obj, var, repl)
 
 g = ir.Graph("EventGraph")
 
@@ -112,7 +140,7 @@ a.store_password(bAdm, "then", (ce, "Password"), (1400, 2000))
 # ---------------------------------------------------------------- transmog (player menu, 07)
 # TmLook: 5 item row names, one per menu_defs.TM_SLOTS slot ("" = worn gear). TmOutfitNames +
 # TmOutfitLooks (5 row names per outfit, flattened). Saved per player in OwlTransmog_<net id>;
-# TmVersion goes up after every load/change so the open menu reloads.
+# they reach the owner by OwlClientTm; TmClientVer goes up on arrival so the open menu reloads.
 TM_ARRAYS = (("TmLook", "Look"), ("TmOutfitNames", "OutfitNames"), ("TmOutfitLooks", "OutfitLooks"))
 N_SLOTS = len(D.TM_SLOTS)
 
@@ -163,20 +191,32 @@ def save_slot(cast, pos):
     return cat
 
 
-def bump(entries, pos):
-    """TmVersion += 1, entered from each (node, exec pin)."""
-    add = g.call("Add_IntInt", KML, pos=(pos[0], pos[1] + 200))
-    g.wire(g.var_get("TmVersion", "int", pos=(pos[0] - 250, pos[1] + 200)), "TmVersion", add, "A", exec=False)
-    g.typed_input(add, "B", "1", "int")
-    st = g.var_set("TmVersion", "int", pos=(pos[0] + 250, pos[1]))
-    g.wire(add, "ReturnValue", st, "TmVersion", exec=False)
+SELF_CALLS = []
+
+
+def self_call(name, pos):
+    """Call one of this blueprint's own events on self (the unwired target). Its function isn't on
+    the class until the graph compiles, so this node drops on paste; it is pasted again after."""
+    c = g.call(name, FULL + "_C", pos=pos)
+    c.pin("execute").typed("exec", direction="EGPD_Input")
+    c.pin("then").typed("exec", direction="EGPD_Output")
+    SELF_CALLS.append(c)
+    return c
+
+
+def send(entries, pos):
+    """Server -> owner: OwlClientTm(TmLook, TmOutfitNames, TmOutfitLooks), entered from each (node, exec pin)."""
+    c = self_call("OwlClientTm", pos)
+    for i, (mine, param) in enumerate((("TmLook", "Look"), ("TmOutfitNames", "Names"), ("TmOutfitLooks", "Looks"))):
+        c.pin(param).typed("string", direction="EGPD_Input", container="Array", ref=True, const=True)
+        g.wire(strings(mine, (pos[0] - 250, pos[1] + 200 + 150 * i)), mine, c, param, exec=False)
     for e, ep in entries:
-        g.wire(e, ep, st, "execute")
-    return st
+        g.wire(e, ep, c, "execute")
+    return c
 
 
 def save_tm(entries, cast, pos):
-    """Write TmLook / TmOutfitNames / TmOutfitLooks to the owner's save slot, then bump."""
+    """Write TmLook / TmOutfitNames / TmOutfitLooks to the owner's save slot, then send them to the owner."""
     x, y = pos
     crt = g.call("CreateSaveGameObject", GS_, pos=(x, y))
     cp = crt.pin("SaveGameClass").typed("class", ir.obj_path("/Script/Engine.SaveGame"), direction="EGPD_Input")
@@ -198,7 +238,7 @@ def save_tm(entries, cast, pos):
     g.typed_input(sav, "UserIndex", "0", "int")
     g.wire(crt, "ReturnValue", sav, "SaveGameObject", exec=False)
     g.wire(prev, "then", sav, "execute")
-    return bump([(sav, "then")], (x + 1600, y))
+    return send([(sav, "then")], (x + 1600, y))
 
 
 def len_is(arr_node, arr_pin, n, pos, op="EqualEqual_IntInt"):
@@ -239,13 +279,13 @@ for i, (mine, saved) in enumerate(TM_ARRAYS):
     st = set_strings(mine, src, saved, (2100 + 300 * i, 6000))
     g.wire(prev, "then", st, "execute")
     prev = st
-bump([(prev, "then"), (bEx, "else"), (sc, "CastFailed")], (3200, 6000))
+send([(prev, "then"), (bEx, "else"), (sc, "CastFailed")], (3200, 6000))
 
 
-def tm_event(name, pins, y):
-    """A Run-on-Server transmog event with the given (name, category, is_array) params."""
+def tm_event(name, pins, y, flags=None):
+    """A Run-on-Server (default) transmog event with the given (name, category, is_array) params."""
     ce = g.custom_event(name, pos=(0, y))
-    ce.set("FunctionFlags", str(RUN_ON_SERVER))
+    ce.set("FunctionFlags", str(flags or RUN_ON_SERVER))
     for pn, cat, arr in pins:
         ce.set('CustomProperties UserDefinedPin (PinName="%s",PinType=(PinCategory="%s"%s),'
                'DesiredPinDirection=EGPD_Output)' % (pn, cat,
@@ -331,7 +371,27 @@ oa.message(bRoom, "else", "You have %d saved outfits. Save over one by typing it
            (1900, 10600))
 save_tm([overwritten, (addLook, "then")], oc, (3600, 9000))
 
-# Tick, server only: the owning player left -> remove the relay
+# OwlServerTmRequest(): the owner's client asks for its look + outfits (once, from Tick)
+ce = tm_event("OwlServerTmRequest", [], 11000)
+send([(ce, "then")], (500, 11000))
+
+# OwlClientTm(Look, Names, Looks), run on the owning client: store them, TmClientVer + 1 (the menu
+# reloads when it changes). TmLook is set too, so the menu never reads it before replication.
+ce = tm_event("OwlClientTm", [("Look", "string", True), ("Names", "string", True), ("Looks", "string", True)],
+              12000, flags=RUN_ON_OWNING_CLIENT)
+prev = ce
+for i, (mine, param) in enumerate((("TmLook", "Look"), ("TmOutfitNames", "Names"), ("TmOutfitLooks", "Looks"))):
+    st = set_strings(mine, ce, param, (400 + 300 * i, 12000))
+    g.wire(prev, "then", st, "execute")
+    prev = st
+inc = g.call("Add_IntInt", KML, pos=(1300, 12200))
+g.wire(g.var_get("TmClientVer", "int", pos=(1100, 12200)), "TmClientVer", inc, "A", exec=False)
+g.typed_input(inc, "B", "1", "int")
+setVer = g.var_set("TmClientVer", "int", pos=(1500, 12000))
+g.wire(inc, "ReturnValue", setVer, "TmClientVer", exec=False)
+g.wire(prev, "then", setVer, "execute")
+
+# Tick, server: the owning player left -> remove the relay; else TmPawn = their character
 tick = g.event("ReceiveTick", parent=ACTOR, pos=(0, 4000))
 auth = g.call("HasAuthority", ACTOR, pos=(0, 4250))
 bAuth = g.branch(pos=(300, 4000))
@@ -344,6 +404,224 @@ g.wire(bAuth, "then", bAlive, "execute")
 g.wire(alive, "ReturnValue", bAlive, "Condition", exec=False)
 die = g.call("K2_DestroyActor", ACTOR, pos=(900, 4100))
 g.wire(bAlive, "else", die, "execute")
+CONTROLLER = "/Script/Engine.Controller"
+PAWN = "/Script/Engine.Pawn"
+pcCast = g.cast(CONTROLLER, pos=(900, 3800))
+pcCast.pin("Object").typed("object", ir.obj_path(ACTOR), direction="EGPD_Input")
+owner = g.call("GetOwner", ACTOR, pos=(700, 3950))
+owner.pin("ReturnValue").typed("object", ir.obj_path(ACTOR), direction="EGPD_Output")
+g.wire(owner, "ReturnValue", pcCast, "Object", exec=False)
+g.wire(bAlive, "then", pcCast, "execute")
+getPawn = g.call("K2_GetPawn", CONTROLLER, pos=(1150, 3950))
+g.wire(pcCast, "AsController", getPawn, "self", exec=False)
+setPawn = g.var_set("TmPawn", "object", ir.obj_path(PAWN), pos=(1400, 3800))
+g.wire(getPawn, "ReturnValue", setPawn, "TmPawn", exec=False)
+g.wire(pcCast, "then", setPawn, "execute")
+
+# Tick, every machine with a screen: show TmLook on TmPawn (see the docstring)
+CHAR_CLS = "/Game/Characters/BasePlayerChar.BasePlayerChar_C"
+CCC = "/Script/ConanSandbox.CharacterCustomizationComponent"
+CS = "/Script/ConanSandbox."
+LAYOUT, MESHL = CS + "CharacterLayout", CS + "CharacterMeshLayout"
+LAYOUT_MEMBERS = (("MeshLayout", MESHL), ("TextureLayout", CS + "CharacterTextureLayout"),
+                  ("TintLayout", CS + "CharacterTintLayout"), ("ArmourDyeParams", CS + "CharacterArmourDyeParams"),
+                  ("BoolParams", CS + "CharacterBoolParameters"), ("IntParams", CS + "CharacterIntParameters"),
+                  ("ScalarParams", CS + "CharacterScalarParameters"), ("EnumParams", CS + "CharacterEnumParameters"))
+MESH_MEMBERS = ("Helmet", "Hair", "FacialHair", "Head", "Forearms", "Hands", "UpperBody", "LowerBody", "Legs", "Feet")
+picked_member = {D.TM_LAYOUT[k][1]: i for i, (k, _l, _loc) in enumerate(D.TM_SLOTS)}
+Y = 14000
+
+
+def struct_node(kind, spath, pos):
+    """K2Node_BreakStruct / K2Node_MakeStruct of a native struct; its struct pin is named after the struct."""
+    hdr = ['StructType="%s"' % ir.struct_path(spath)] + (["bMadeAfterOverridePinRemoval=True"] if kind == "Make" else [])
+    n = g.node("K2Node_%sStruct" % kind, hdr, base=kind + "Struct", pos=pos)
+    n.pin(spath.split(".")[-1]).typed("struct", ir.struct_path(spath),
+                                      direction="EGPD_Input" if kind == "Break" else "EGPD_Output")
+    return n
+
+
+def toggle(prev, prev_pin, enable, layout_src, pos):
+    """The pawn's CharacterCustomizationComponent -> ToggleCharacterLayoutOverride(enable, layout),
+    deferred (the game's own way), never forced."""
+    gc = g.call("GetComponentByClass", ACTOR, pos=(pos[0], pos[1] + 250))
+    g.wire(pawnCast, "AsBase Player Char", gc, "self", exec=False)
+    cp = gc.pin("ComponentClass").typed("class", ir.obj_path("/Script/Engine.ActorComponent"), direction="EGPD_Input")
+    cp.set("DefaultObject", '"%s"' % CCC)
+    gc.pin("ReturnValue").typed("object", ir.obj_path(CCC), direction="EGPD_Output")
+    t = g.call("ToggleCharacterLayoutOverride", CCC, pos=(pos[0] + 300, pos[1]))
+    g.wire(gc, "ReturnValue", t, "self", exec=False)
+    g.typed_input(t, "bInEnable", "true" if enable else "false", "bool")
+    g.typed_input(t, "InDeferred", "true", "bool")
+    g.typed_input(t, "InForce", "false", "bool")
+    t.pin("InLayoutOverride").typed("struct", ir.struct_path(LAYOUT), direction="EGPD_Input", ref=True, const=True)
+    g.wire(layout_src[0], layout_src[1], t, "InLayoutOverride", exec=False)
+    g.wire(prev, prev_pin, t, "execute")
+    return t
+
+
+# Tick, a client: its own relay asks the server once for its look + outfits (OwlClientTm answers).
+# Other players' relays have no owner here (their controllers don't exist on this client).
+askCast = g.cast("/Script/Engine.PlayerController", pos=(600, Y - 1200))
+askCast.pin("Object").typed("object", ir.obj_path(ACTOR), direction="EGPD_Input")
+askOwner = g.call("GetOwner", ACTOR, pos=(400, Y - 1000))
+askOwner.pin("ReturnValue").typed("object", ir.obj_path(ACTOR), direction="EGPD_Output")
+g.wire(askOwner, "ReturnValue", askCast, "Object", exec=False)
+g.wire(bAuth, "else", askCast, "execute")
+isLocal = g.call("IsLocalPlayerController", CONTROLLER, pos=(900, Y - 1000))
+g.wire(askCast, "AsPlayer Controller", isLocal, "self", exec=False)
+notAsked = g.call("Not_PreBool", KML, pos=(900, Y - 850))
+g.wire(g.var_get("TmAsked", "bool", pos=(700, Y - 850)), "TmAsked", notAsked, "A", exec=False)
+mustAsk = g.call("BooleanAND", KML, pos=(1150, Y - 950))
+g.wire(isLocal, "ReturnValue", mustAsk, "A", exec=False)
+g.wire(notAsked, "ReturnValue", mustAsk, "B", exec=False)
+bAsk = g.branch(pos=(900, Y - 1200))
+g.wire(askCast, "then", bAsk, "execute")
+g.wire(mustAsk, "ReturnValue", bAsk, "Condition", exec=False)
+setAsked = g.var_set("TmAsked", "bool", pos=(1150, Y - 1200))
+setAsked.pin("TmAsked").literal("true")
+g.wire(bAsk, "then", setAsked, "execute")
+ask = self_call("OwlServerTmRequest", (1400, Y - 1200))
+g.wire(setAsked, "then", ask, "execute")
+
+dds = g.call("IsDedicatedServer", KSL, pos=(1700, Y + 250))
+bScreen = g.branch(pos=(1700, Y))
+for e, ep in ((setPawn, "then"), (pcCast, "CastFailed"), (ask, "then"), (bAsk, "else"), (askCast, "CastFailed")):
+    g.wire(e, ep, bScreen, "execute")
+g.wire(dds, "ReturnValue", bScreen, "Condition", exec=False)
+pawnCast = g.cast(CHAR_CLS, pos=(2000, Y))
+g.wire(g.var_get("TmPawn", "object", ir.obj_path(PAWN), pos=(1800, Y + 250)), "TmPawn", pawnCast, "Object",
+       exec=False)
+g.wire(bScreen, "else", pawnCast, "execute")
+real = g.var_get("CharacterLayout", "struct", ir.struct_path(LAYOUT), parent=CHAR_CLS, pos=(2000, Y + 400))
+g.wire(pawnCast, "AsBase Player Char", real, "self", exec=False)
+brk = struct_node("Break", LAYOUT, (2300, Y + 400))
+g.wire(real, "CharacterLayout", brk, "CharacterLayout", exec=False)
+for m, sp in LAYOUT_MEMBERS:
+    brk.pin(m).typed("struct", ir.struct_path(sp), direction="EGPD_Output")
+brkM = struct_node("Break", MESHL, (2600, Y + 400))
+g.wire(brk, "MeshLayout", brkM, "CharacterMeshLayout", exec=False)
+for m in MESH_MEMBERS:
+    brkM.pin(m).typed("int", direction="EGPD_Output")
+# the look must be N_SLOTS long; anything else counts as no look
+look_ok = g.call("EqualEqual_IntInt", KML, pos=(2300, Y + 250))
+g.wire(g.array_len(strings("TmLook", (2000, Y + 250)), "TmLook", (2150, Y + 250), elem_cat="string"), "ReturnValue",
+       look_ok, "A", exec=False)
+g.typed_input(look_ok, "B", str(N_SLOTS), "int")
+bLen = g.branch(pos=(2300, Y))
+g.wire(pawnCast, "then", bLen, "execute")
+g.wire(look_ok, "ReturnValue", bLen, "Condition", exec=False)
+# each mesh member: the picked item id where the look has one, else the real value
+mkM = struct_node("Make", MESHL, (3800, Y + 400))
+anyPick, key, has_of = None, None, {}
+x = 2900
+for m in MESH_MEMBERS:
+    if m in picked_member:
+        item = g.array_get(strings("TmLook", (x, Y + 900)), "TmLook", picked_member[m], (x + 150, Y + 900),
+                           elem_cat="string")
+        ln = g.call("Len", KSTR, pos=(x + 350, Y + 1050))
+        g.wire(item, "Output", ln, "S", exec=False)
+        has = g.call("Greater_IntInt", KML, pos=(x + 550, Y + 1050))
+        g.wire(ln, "ReturnValue", has, "A", exec=False)
+        g.typed_input(has, "B", "0", "int")
+        asInt = g.call("Conv_StringToInt", KSTR, pos=(x + 350, Y + 900))
+        g.wire(item, "Output", asInt, "InString", exec=False)
+        sel = g.call("SelectInt", KML, pos=(x + 600, Y + 800))
+        g.wire(asInt, "ReturnValue", sel, "A", exec=False)
+        g.wire(brkM, m, sel, "B", exec=False)
+        g.wire(has, "ReturnValue", sel, "bPickA", exec=False)
+        src = (sel, "ReturnValue")
+        has_of[m] = (has, "ReturnValue")
+        if anyPick is None:
+            anyPick = (has, "ReturnValue")
+        else:
+            orN = g.call("BooleanOR", KML, pos=(x + 750, Y + 1200))
+            g.wire(anyPick[0], anyPick[1], orN, "A", exec=False)
+            g.wire(has, "ReturnValue", orN, "B", exec=False)
+            anyPick = (orN, "ReturnValue")
+        x += 150
+    else:
+        src = (brkM, m)
+    mkM.pin(m).typed("int", direction="EGPD_Input")
+    g.wire(src[0], src[1], mkM, m, exec=False)
+    # key: the pawn's name + the ten ids
+    s = g.call("Conv_IntToString", KSTR, pos=(3600, Y + 1400 + 120 * MESH_MEMBERS.index(m)))
+    g.wire(src[0], src[1], s, "InInt", exec=False)
+    if key is None:
+        nm = g.call("GetDisplayName", KSL, pos=(3600, Y + 1300))
+        g.wire(pawnCast, "AsBase Player Char", nm, "Object", exec=False)
+        key = (nm, "ReturnValue")
+    cat = g.call("Concat_StrStr", KSTR, pos=(3850, Y + 1400 + 120 * MESH_MEMBERS.index(m)))
+    g.wire(key[0], key[1], cat, "A", exec=False)
+    g.wire(s, "ReturnValue", cat, "B", exec=False)
+    sep = g.call("Concat_StrStr", KSTR, pos=(4100, Y + 1400 + 120 * MESH_MEMBERS.index(m)))
+    g.wire(cat, "ReturnValue", sep, "A", exec=False)
+    g.typed_input(sep, "B", "|", "string")
+    key = (sep, "ReturnValue")
+# dye: a picked slot shows its item undyed (all channels 0), the rest keep the real gear's dye
+DYE, SLOT_DYE = CS + "CharacterArmourDyeParams", CS + "ArmourSlotDyeParams"
+DYE_MEMBERS = ("Helmet", "Forearms", "Hands", "UpperBody", "LowerBody", "Legs", "Feet")
+CHANNELS = ("Channel1", "Channel2", "Channel3", "Channel4")
+brkD = struct_node("Break", DYE, (3000, Y + 3800))
+g.wire(brk, "ArmourDyeParams", brkD, "CharacterArmourDyeParams", exec=False)
+mkD = struct_node("Make", DYE, (4000, Y + 3800))
+for i, m in enumerate(DYE_MEMBERS):
+    brkD.pin(m).typed("struct", ir.struct_path(SLOT_DYE), direction="EGPD_Output")
+    mkD.pin(m).typed("struct", ir.struct_path(SLOT_DYE), direction="EGPD_Input")
+    if m not in has_of:
+        g.wire(brkD, m, mkD, m, exec=False)
+        continue
+    y = Y + 3800 + 400 * i
+    bs = struct_node("Break", SLOT_DYE, (3300, y))
+    g.wire(brkD, m, bs, "ArmourSlotDyeParams", exec=False)
+    ms = struct_node("Make", SLOT_DYE, (3750, y))
+    for j, ch in enumerate(CHANNELS):
+        bs.pin(ch).typed("int", direction="EGPD_Output")
+        ms.pin(ch).typed("int", direction="EGPD_Input")
+        sel = g.call("SelectInt", KML, pos=(3550, y + 90 * j))
+        g.typed_input(sel, "A", "0", "int")
+        g.wire(bs, ch, sel, "B", exec=False)
+        g.wire(has_of[m][0], has_of[m][1], sel, "bPickA", exec=False)
+        g.wire(sel, "ReturnValue", ms, ch, exec=False)
+    g.wire(ms, "ArmourSlotDyeParams", mkD, m, exec=False)
+mkL = struct_node("Make", LAYOUT, (4100, Y + 400))
+for m, sp in LAYOUT_MEMBERS:
+    mkL.pin(m).typed("struct", ir.struct_path(sp), direction="EGPD_Input")
+    if m == "MeshLayout":
+        g.wire(mkM, "CharacterMeshLayout", mkL, m, exec=False)
+    elif m == "ArmourDyeParams":
+        g.wire(mkD, "CharacterArmourDyeParams", mkL, m, exec=False)
+    else:
+        g.wire(brk, m, mkL, m, exec=False)
+# a pick -> (re)apply when the result changed
+bAny = g.branch(pos=(2600, Y))
+g.wire(bLen, "then", bAny, "execute")
+g.wire(anyPick[0], anyPick[1], bAny, "Condition", exec=False)
+changed = g.call("NotEqual_StrStr", KSTR, pos=(4400, Y + 250))
+g.wire(key[0], key[1], changed, "A", exec=False)
+g.wire(g.var_get("TmApplied", "string", pos=(4200, Y + 300)), "TmApplied", changed, "B", exec=False)
+bChanged = g.branch(pos=(4500, Y))
+g.wire(bAny, "then", bChanged, "execute")
+g.wire(changed, "ReturnValue", bChanged, "Condition", exec=False)
+setKey = g.var_set("TmApplied", "string", pos=(4800, Y))
+g.wire(key[0], key[1], setKey, "TmApplied", exec=False)
+g.wire(bChanged, "then", setKey, "execute")
+setOn = g.var_set("TmOn", "bool", pos=(5100, Y))
+setOn.pin("TmOn").literal("true")
+g.wire(setKey, "then", setOn, "execute")
+toggle(setOn, "then", True, (mkL, "CharacterLayout"), (5400, Y))
+# no pick (or no valid look) -> turn it off, once
+bWasOn = g.branch(pos=(2900, Y + 2800))
+for e, ep in ((bAny, "else"), (bLen, "else")):
+    g.wire(e, ep, bWasOn, "execute")
+g.wire(g.var_get("TmOn", "bool", pos=(2700, Y + 3000)), "TmOn", bWasOn, "Condition", exec=False)
+setOff = g.var_set("TmOn", "bool", pos=(3200, Y + 2800))
+setOff.pin("TmOn").literal("false")
+g.wire(bWasOn, "then", setOff, "execute")
+clearKey = g.var_set("TmApplied", "string", pos=(3500, Y + 2800))
+clearKey.pin("TmApplied").literal("")
+g.wire(setOff, "then", clearKey, "execute")
+toggle(clearKey, "then", False, (real, "CharacterLayout"), (3800, Y + 2800))
 
 # Clear + compile first, or a rebuild renames the pasted events (see 02)
 bel.compile_blueprint(bp_obj)
@@ -352,27 +630,47 @@ bp.clear_graph(_bp_ptr, _g_ptr)
 bp.mark_structurally_modified(_bp_ptr)
 bel.compile_blueprint(bp_obj)
 
-rep = build.build_graph(FULL, g)
+rep = build.build_graph(FULL, g, verbose=False)
+# the self-calls dropped (their events weren't functions yet); now they are: paste just those
+# nodes and re-make their wires by name. (Pasting the whole graph again renames the events.)
+assert rep["dropped_nodes"] == len(SELF_CALLS), "relay paste dropped %d nodes, expected the %d self-calls" % (
+    rep["dropped_nodes"], len(SELF_CALLS))
+pasted = bp.import_nodes(_g_ptr, "\n".join(c.render() for c in SELF_CALLS) + "\n")
+_relinked, still = bp._relink_dropped(_g_ptr, g.render())
+bp.mark_structurally_modified(_bp_ptr)
+bel.compile_blueprint(bp_obj)
+rep.update(build.scan(_g_ptr), dropped_nodes=len(SELF_CALLS) - pasted, dropped_links=still)
+rep["ok"] = not (rep["dropped_nodes"] or rep["dropped_links"] or rep["orphans"] or rep["wildcards"] or rep["errors"])
+print("relay: %d self-calls pasted again, %d wires re-made | errors %s" % (pasted, len(_relinked),
+                                                                          rep["errors"] or "(clean)"))
 assert rep["ok"], "relay graph not clean: %r" % {k: rep[k] for k in ("dropped_nodes", "dropped_links", "orphans",
                                                                      "wildcards", "errors")}
-# the events must exist under their own names AND compile as server RPCs (INTERNALS §10:
+# the events must exist under their own names AND compile as RPCs of the right kind (INTERNALS §10:
 # EFunctionFlags at 0xd0 of the UFunction in this build)
-for fn in EVENTS:
+for fn, want in EVENTS.items():
     f = unreal.find_object(None, FULL + "_C:" + fn)
     assert f, "custom event %s missing after build (renamed on paste?)" % fn
     flags = ctypes.c_uint32.from_address(bp.obj_addr(f) + 0xd0).value
-    assert flags & RUN_ON_SERVER == RUN_ON_SERVER, "%s is not Run on Server: flags 0x%08x" % (fn, flags)
-    print("%s: Run on Server, reliable (flags 0x%08x)" % (fn, flags))
+    assert flags & want == want, "%s has the wrong net flags: 0x%08x" % (fn, flags)
+    print("%s: %s, reliable (flags 0x%08x)" % (fn, "Run on Server" if want == RUN_ON_SERVER else "Run on owning Client",
+                                               flags))
+# TmVersion (the old replicated counter) is gone; drop it from the asset
+bel.remove_unused_variables(bp_obj)
+bel.compile_blueprint(bp_obj)
 
 gen = unreal.load_object(None, FULL + "_C")
 cdo = unreal.get_default_object(gen)
+for var in ("TmLook", "TmPawn", "TmOutfitNames", "TmOutfitLooks", "TmClientVer", "TmApplied", "TmOn", "TmAsked"):
+    cdo.get_editor_property(var)                               # raises if remove_unused_variables took it
 cdo.set_editor_property("replicates", True)
-cdo.set_editor_property("only_relevant_to_owner", True)
+cdo.set_editor_property("only_relevant_to_owner", False)     # everyone sees everyone's look
+cdo.set_editor_property("always_relevant", True)
 tk = cdo.get_editor_property("primary_actor_tick")
-tk.set_editor_property("tick_interval", 1.0)
+tk.set_editor_property("tick_interval", 0.1)                 # a respawned character gets its look back fast
 cdo.set_editor_property("primary_actor_tick", tk)
 assert unreal.EditorAssetLibrary.save_asset(PATH), "save failed"
-print("CDO: replicates=%s only_relevant_to_owner=%s" % (cdo.get_editor_property("replicates"),
-                                                        cdo.get_editor_property("only_relevant_to_owner")))
+print("CDO: replicates=%s only_relevant_to_owner=%s always_relevant=%s" % (
+    cdo.get_editor_property("replicates"), cdo.get_editor_property("only_relevant_to_owner"),
+    cdo.get_editor_property("always_relevant")))
 print("BUILD OK: owl-admin v%d -> %s%s" % (
     MOD.VERSION, FULL, "  [DRY RUN -- not shippable]" if PKG != MOD.OUTPUT_PKG else ""))

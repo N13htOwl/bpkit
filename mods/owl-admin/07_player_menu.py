@@ -12,11 +12,11 @@ Transmog tab (the Transmog Outfits board), three columns:
 The catalogue (tm_catalog: ~580 wearables from the game's ItemTable) is baked into the
 menu's CDO as parallel arrays TmIds / TmNames / TmIcons / TmSlots / TmCats. The player's look
 (TmPick: one row name per slot, "" = worn gear) and saved outfits live on the server, on the
-player's relay (10), replicated to the owner. Apply look / Save outfit are the relay's server
-RPCs. This round saves the look; showing it on the character comes later.
+player's relay (10), replicated to every player. Apply look / Save outfit are the relay's
+server RPCs; the relay then shows the applied look on the character, for everyone.
 
 Graph:
-    Tick     -> tab highlight; find this player's relay once (MyRelay); when its TmVersion
+    Tick     -> tab highlight; find this player's relay once (MyRelay); when its TmClientVer
                 changes: fill the outfit rows (and, the first time only, TmPick = its TmLook),
                 mark dirty; when dirty or the search text changed: tab/chip colours, rebuild
                 the grid, count, preview
@@ -390,7 +390,7 @@ send = g.call("OwlServerTmApply", RELAY_CLS, pos=(650, y))
 g.wire(relay_get((650, y + 200)), "MyRelay", send, "self", exec=False)
 g.wire(arr("TmPick", "string", (450, y + 350)), "TmPick", send, "Look", exec=False)
 g.wire(bR, "then", send, "execute")
-say(send, "then", "Look saved on the server. Seeing it on your character comes in a later update.", (1200, y))
+say(send, "then", "Look applied. Your gear and stats are unchanged.", (1200, y))
 say(bR, "else", NOT_CONNECTED, (1200, y + 400))
 y += 900
 
@@ -470,10 +470,10 @@ g.wire(bMine, "then", setRelay, "execute")
 X = 1900
 bSync0 = relay_valid(hasRelay, "then", (X, Y))           # re-check: also entered after the search
 g.wire(each, "Completed", bSync0, "execute")
-rver = g.var_get("TmVersion", "int", parent=RELAY_CLS, pos=(X, Y + 400))
+rver = g.var_get("TmClientVer", "int", parent=RELAY_CLS, pos=(X, Y + 400))
 g.wire(relay_get((X, Y + 400)), "MyRelay", rver, "self", exec=False)
 neq = g.call("NotEqual_IntInt", KML, pos=(X + 250, Y + 400))
-g.wire(rver, "TmVersion", neq, "A", exec=False)
+g.wire(rver, "TmClientVer", neq, "A", exec=False)
 g.wire(var("TmSynced", "int", (X, Y + 550)), "TmSynced", neq, "B", exec=False)
 bSync = g.branch(pos=(X + 300, Y))
 g.wire(bSync0, "then", bSync, "execute")
@@ -529,7 +529,7 @@ for i in range(N_OUT):
         entries.append((sv, "then"))
 X += N_OUT * 900
 synced = g.var_set("TmSynced", "int", pos=(X, Y))
-g.wire(rver, "TmVersion", synced, "TmSynced", exec=False)
+g.wire(rver, "TmClientVer", synced, "TmSynced", exec=False)
 for e, ep in entries:
     g.wire(e, ep, synced, "execute")
 syncDone = dirty(synced, "then", (X + 300, Y))

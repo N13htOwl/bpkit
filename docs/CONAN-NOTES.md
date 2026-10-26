@@ -357,6 +357,49 @@ and neither did a GUIModule object constructed by hand (it isn't in the controll
   there. Use WrapBoxes for button rows, size side columns for the narrow case, and set
   `Clipping=ClipToBounds` on the columns.
 
+## Character appearance: armor visuals and a transmog override (2026-10-26)
+
+How the game shows armor, found on a throwaway Play character:
+- **The character's look is a `CharacterLayout`.** The `CharacterMeshLayout` part has one int per
+  body slot (Helmet, Hair, FacialHair, Head, Forearms, Hands, UpperBody, LowerBody, Legs, Feet).
+  For armor slots that int is the **worn item's template id** (−1 or −2 when empty, 0 for the
+  bare body). `BasePlayerChar_C.CharacterLayout` is the real layout: the game saves it in the
+  `properties` table, and equipping changes it.
+- **`/Game/Items/EquipmentVariationTable`** (keyed by item id) gives the male and female meshes,
+  the tucked variants, `SlotType` (Helmet/Upperbody/Hands/Lowerbody/Feet) and `HideFlags`. The
+  item table itself has no mesh link (its `VisualObject` is a placeholder rock).
+- **`CharacterCustomizationComponent.ToggleCharacterLayoutOverride(bInEnable, InLayoutOverride,
+  InDeferred, InForce)`** shows a different layout without changing the real one. The game
+  resolves it like worn gear (gender, hidden hair under helmets, legs tucked into boots), doesn't
+  save it (gone after a rejoin) and ignores later equipment changes. While it's on, the
+  component's `Layout` reports the override and `BasePlayerChar_C.CharacterLayout` still has the
+  real one.
+- **Transmog recipe (owl-admin 10):** read `CharacterLayout`, Break it and its MeshLayout, then
+  Make a new one with the picked slots' ids. Pass that to the toggle (deferred, not forced), and
+  redo it whenever the result changes so unpicked slots follow real gear. Each client does this
+  for every character, so the per-player data must reach everyone: an always-relevant relay
+  carrying a replicated pawn reference, since other players' controllers don't exist on a client.
+  Keep anything private (saved outfit names) off that relay's replicated variables: send it to the
+  owner with a Run-on-owning-Client event instead.
+- **Dye:** `CharacterLayout.ArmourDyeParams` holds one `ArmourSlotDyeParams` (Channel1-4, all 0 =
+  undyed) per armor slot, taken from the real item. Zero a slot's channels when it is
+  transmogged, or the real item's dye tints the transmog piece.
+- **Timing:** with the relay ticking every 0.1 s the look is on the character in the first frame the
+  controller has it after a rejoin. Python can't set `BasePlayerChar_C.CharacterLayout` ("cannot
+  be edited on instances"), so the real layout is safe from `set_editor_property`.
+- **A blueprint calling its own new custom event drops on paste.** `K2Node_CallFunction` for an
+  event pasted in the same graph (bSelfContext or MemberParent = own class) either drops or keeps
+  only orphaned pins, because the event isn't a function on the class until the graph compiles;
+  refreshing nodes (`FBlueprintEditorUtils::RefreshAllNodes`) doesn't fix an orphaned one, and
+  pasting the whole graph again renames the events. Working recipe (owl-admin 10): paste the graph
+  (the self-calls drop), compile, then paste just the self-call nodes and re-make their wires
+  by name (`bridge._relink_dropped` with the full authored text).
+- **Danger, from Python:** `cc.get_editor_property("layout")` is a **live reference**, not a
+  copy. Setting anything on it, even a nested `mesh_layout` field, rewrote the real layout and
+  reset a character to the default male look, and the game saved that. Use `.copy()` for
+  experiments, and test only on a throwaway character: move `UE4/Saved/game_0*` aside (all of
+  them, since backups rotate), let Play make a new character, then put the snapshot back.
+
 ## Cosmetic mounted rider — the working recipe
 
 Attach + freeze + pose, all content-only and scriptable from Blueprint:

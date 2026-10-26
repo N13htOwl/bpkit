@@ -151,6 +151,10 @@ TM_SLOTS = [("head", "Head", 3), ("chest", "Chest", 4), ("hands", "Hands", 5), (
             ("feet", "Feet", 7)]
 TM_CATS = [("all", "All", None), ("light", "Light", ["LightArmor"]), ("medium", "Medium", ["MediumArmor"]),
            ("heavy", "Heavy", ["HeavyArmor"]), ("other", "Other", ())]
+# Where a slot's appearance lands on the character, per slot key: (the item's SlotType in
+# /Game/Items/EquipmentVariationTable, the CharacterMeshLayout member that holds its item id)
+TM_LAYOUT = {"head": ("Helmet", "Helmet"), "chest": ("Upperbody", "UpperBody"), "hands": ("Hands", "Hands"),
+             "legs": ("Lowerbody", "LowerBody"), "feet": ("Feet", "Feet")}
 
 PANELS = {
     "access": ["Access log"],
