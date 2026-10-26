@@ -406,11 +406,21 @@ How the game shows armor, found on a throwaway Play character:
   - Two players (listen server, 1 client): the client sees the host's character in its transmog
     look although its real gear is empty. The client's copy of the host's relay has the look but
     no outfit names; the client's own relay has its outfits.
+  - Dye: a real helmet (52227) was dyed at the Dyer's Bench, giving item stats
+    `DYE_INDEX1-4 = 41, 0, 81, 0`. Transmogged to 52421, the shown helmet had dye 0, 0, 0, 0
+    (plain bronze on screen). With the helmet slot empty, the real helmet showed with its dye
+    (41, 0, 81, 0, green and grey on screen). The real layout kept its dye both times.
   - Not tested:
     - The host seeing the client's look: a PIE client can't finish character creation (see below).
     - Different looks per player: PIE players share one account, so they load the same save.
-    - Dye on screen: the test gear had no dye, and Python can't set the real layout.
     - Respawn timing.
+- **Dyeing in game:** the inventory has no Dye action. Place a Dyer's Bench (item 18543;
+  `SpawnItem 18543 1` puts it in the hotbar), tap E on it, drag the item into "Item To Dye", then
+  click DYE. Pick a channel, then a dye (dye items are 17010 and up; ItemTable `DyeColourID`).
+  SAVE uses one of each dye. The colours are stored on the item as int stats
+  `ItemIntStatID.DYE_INDEX1-4`. Only some items can be dyed (`GameItem.can_dye_item`).
+  `try_get_dye_flags_for_item_template_id` is 0 for one that can't. Esc in a PIE window stops
+  Play, so close game windows with their CLOSE button or Tab.
 - **Multiplayer in PIE:** the net mode and player count are only in the Play button's ⋮ menu
   (Net Mode → Play As Listen Server, Number of Players). `LevelEditorPlaySettings` isn't
   exposed to Python here. All PIE windows log in as the same account. Once one makes a
