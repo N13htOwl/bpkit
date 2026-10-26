@@ -142,6 +142,16 @@ PLAYER_TABS = [
     ("bugreport", "Bug Report", "Tell the admins about a problem"),
 ]
 
+# Transmog (player menu): the five appearance slots -- (key, tab label, ItemTable EquipLocation:
+# the EquipmentSlots enum, 3 HEAD .. 7 FEET) -- and the category chips -- (key, label, the
+# GUICategory values they show; None = all, () = everything not in another chip). The design
+# board's Armor / Clothing / Cosmetic chips don't exist in the game's data; these are its real
+# categories.
+TM_SLOTS = [("head", "Head", 3), ("chest", "Chest", 4), ("hands", "Hands", 5), ("legs", "Legs", 6),
+            ("feet", "Feet", 7)]
+TM_CATS = [("all", "All", None), ("light", "Light", ["LightArmor"]), ("medium", "Medium", ["MediumArmor"]),
+           ("heavy", "Heavy", ["HeavyArmor"]), ("other", "Other", ())]
+
 PANELS = {
     "access": ["Access log"],
     "players": ["Per-player restrictions (build, mute, PvP, ban)"],

@@ -335,6 +335,27 @@ and neither did a GUIModule object constructed by hand (it isn't in the controll
   `CustomEvent`, `CustomEvent_1` and other BPs' calls to them drop.
 - `GetActorOfClass` already returns the class you pass, so a `Cast` on its result is flagged as
   redundant ("is already a ..., you don't need Cast To").
+- **Rebuilding a BP gives its custom events new GUIDs.** Other BPs that call them (e.g. the
+  menu calling the relay's RPCs) then fail to compile ("unresolved compiler errors" at Play
+  start) until they're rebuilt too. Rebuild in manifest order, never one step alone.
+- **Per-player data on the server (owl-admin v10 transmog):** key a SaveGame slot on
+  `ConanPlayerController.GetPlayerNetId()`. In PIE that id ends `-Context_<n>` and n goes up
+  every Play session, so strip that tail or nothing persists across a Play restart. The data
+  lives in replicated vars on the player's relay with a `TmVersion` counter; the menu copies
+  them when the counter changes. Copy the *edited* state (the picks) only on the first sync, or a
+  later server change (an outfit saved) throws away edits not yet applied.
+- **Big static lists in a WBP:** bake them into the CDO as parallel arrays
+  (`set_editor_property` on `get_default_object(gen_class)` after the graph compile, then save);
+  ~580 entries cost nothing. Build the grid at runtime: `CreateWidget` per match,
+  set its exposed vars *before* `AddChildToWrapBox` (Construct runs on add), and
+  `LoadAsset_Blocking(Conv_SoftObjPathToSoftObjRef(MakeSoftObjectPath(path)))` + cast Texture2D
+  for icons from a path string.
+- **`EditableTextBox.OnTextChanged` doesn't fire for `SetText`.** To react to any change,
+  compare `GetText` with a stored copy in Tick.
+- **The editor's Play viewport is narrow** (~1000×780 px at DPI scale ~0.72, so ~1400 UI units
+  wide). Fixed side columns that look fine on a 1080p canvas crush a fill column to nothing
+  there. Use WrapBoxes for button rows, size side columns for the narrow case, and set
+  `Clipping=ClipToBounds` on the columns.
 
 ## Cosmetic mounted rider — the working recipe
 

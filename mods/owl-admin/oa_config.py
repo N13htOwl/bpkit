@@ -18,6 +18,10 @@ SAVEGAME = "BP_OwlAdminSave"          # SaveGame holding the admin password (ser
 SAVE_SLOT = "OwlAdmin"                # its slot name (Saved/SaveGames/OwlAdmin.sav on the server)
 RELAY = "BP_OwlRelay"                 # one per player, owned by their PlayerController: carries
                                       # passwords to the server as RPCs, so they never hit the log
+TM_CELL_WBP = "WBP_OwlTmCell"         # one appearance in the player menu's transmog grid (made at runtime)
+TM_SAVEGAME = "BP_OwlTransmogSave"    # a player's look + saved outfits (server side only)
+TM_SLOT_PREFIX = "OwlTransmog_"       # its slot: OwlTransmog_<player net id>, one file per player
+TM_MAX_OUTFITS = 6                    # saved outfits per player (the menu has this many rows)
 SETTINGS_SAVEGAME = "BP_OwlSettingsSave"   # SaveGame holding the applied menu settings (server side only)
 SETTINGS_SLOT = "OwlAdminSettings"         # its own slot, so saving settings never touches the password
 
@@ -57,12 +61,13 @@ BOARD_SCALE = 1.5
 FONT_BOLD = "/Game/Fonts/Kelson_Sans_Bold.Kelson_Sans_Bold"         # board: Rajdhani 700
 FONT_REGULAR = "/Game/Fonts/Kelson_Sans_Regular.Kelson_Sans_Regular"  # board: Rajdhani 500
 
-VERSION = 9   # v2: hidden until the player has a character; v3: notice cards moved below Conan's
+VERSION = 10  # v2: hidden until the player has a character; v3: notice cards moved below Conan's
               # vitals; v4: hidden while a menu has the mouse cursor up; v5: `dc OwlAdmin` menu;
               # v6: Left Shift+U hotkey (polled; didn't work); v7: Shift+U / Shift+I as input
               # actions, Owl Admin login, player menu; v8: APPLY saves settings on the server and
               # pushes the LIVE ones into Conan's server settings; v9: the menu sends passwords
-              # through a per-player relay RPC instead of a logged console command
+              # through a per-player relay RPC instead of a logged console command; v10: the
+              # player menu's Transmog tab (looks + outfits saved per player on the server)
 
 
 def full(pkg, name):

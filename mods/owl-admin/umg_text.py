@@ -81,12 +81,13 @@ class Umg:
             "ColorAndOpacity=(SpecifiedColor=%s)" % self.lin(hex_),
         ] + (["AutoWrapText=True"] if wrap else []), variable=variable)
 
-    def border(self, name, hex_, a, pad, child, halign="HAlign_Fill", valign="VAlign_Fill", props=()):
+    def border(self, name, hex_, a, pad, child, halign="HAlign_Fill", valign="VAlign_Fill", props=(), variable=None):
         return self.widget("/Script/UMG.Border", name, [
             "HorizontalAlignment=%s" % halign, "VerticalAlignment=%s" % valign,
             "Padding=%s" % pad, "BrushColor=%s" % self.lin(hex_, a)] + list(props),
             [("/Script/UMG.BorderSlot", child,
-              ["Padding=%s" % pad, "HorizontalAlignment=%s" % halign, "VerticalAlignment=%s" % valign])])
+              ["Padding=%s" % pad, "HorizontalAlignment=%s" % halign, "VerticalAlignment=%s" % valign])],
+            variable=variable)
 
     def strip(self, name, hex_, pad):
         """A solid bar: a childless Border whose padding is its size."""
