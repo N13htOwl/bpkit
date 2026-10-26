@@ -108,6 +108,16 @@ SETTINGS = [
     N("stack", "loot", "Stack size multiplier", "Scales how many of an item fit in one slot.", 1, 10, 1, "x", 2),
 ]
 
+# The player menu (Shift+I): the canvas's player-facing boards, one tab each. Step 1 shows
+# each as a placeholder card; they get built out one board at a time.
+PLAYER_TABS = [
+    ("transmog", "Transmog Outfits", "Change how your gear looks"),
+    ("pets", "Pet Shop", "Buy companion pets with coins"),
+    ("masks", "Animal Masks", "Wear an animal mask"),
+    ("equipment", "Equipment & Owl Mask", "Your gear and the Owl Mask"),
+    ("bugreport", "Bug Report", "Tell the admins about a problem"),
+]
+
 PANELS = {
     "access": ["Access log"],
     "players": ["Per-player restrictions (build, mute, PvP, ban)"],

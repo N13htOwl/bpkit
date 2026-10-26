@@ -1,7 +1,8 @@
-"""owl-admin step 05: DT_OwlAdmin_Commands -- the 1-row BlueprintCommandDataRow table that
-02's ModDataTableOperations override merges into the game's CustomConsoleCommandsDataTable,
-so `dc OwlAdmin` resolves. Row: CommandActorClass = BP_OwlAdminMenuCommand, RequireAdmin
-(SP players are admin), RunOnClient (the menu is local UI), not RunOnServer.
+"""owl-admin step 05: DT_OwlAdmin_Commands -- the BlueprintCommandDataRow table that 09's
+ModDataTableOperations override merges into the game's CustomConsoleCommandsDataTable, one
+row per oa_config.COMMANDS entry: the command class (04), RequireAdmin (Conan admin; only
+OwlSetPassword), and where it runs (OwlAdmin opens local UI -> client; the login commands
+read the server's password and write the server's unlocked list -> server).
 
 Run with Play STOPPED, after 04:  python ue_run.py mods/owl-admin/05_command_table.py
 """
@@ -22,8 +23,8 @@ assert not unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).is_in_play_i
 
 PKG = MOD.resolve_pkg()
 PATH = "%s/%s" % (PKG, MOD.CMD_TABLE)
-CMD_CLS = MOD.full(PKG, MOD.MENU_CMD) + "_C"
-assert unreal.load_object(None, CMD_CLS), "run 04_menu_command.py first: no " + CMD_CLS
+for _cmd, cls, *_f in MOD.COMMANDS:
+    assert unreal.load_object(None, MOD.full(PKG, cls) + "_C"), "run 04_commands.py first: no " + cls
 eal = unreal.EditorAssetLibrary
 DTL = unreal.DataTableFunctionLibrary
 
@@ -43,13 +44,16 @@ def col(sub):
     return c
 
 
-row = {"Name": MOD.CMD_NAME, col("commandactorclass"): CMD_CLS,
-       col("requireadmin"): True, col("runonserver"): False, col("runonclient"): True}
-assert DTL.fill_data_table_from_json_string(dt, json.dumps([row])), "fill failed"
+rows = [{"Name": cmd, col("commandactorclass"): MOD.full(PKG, cls) + "_C",
+         col("requireadmin"): admin, col("runonserver"): server, col("runonclient"): client}
+        for cmd, cls, admin, server, client in MOD.COMMANDS]
+assert DTL.fill_data_table_from_json_string(dt, json.dumps(rows)), "fill failed"
 assert eal.save_asset(PATH), "save failed"
 
 back = json.loads(DTL.export_data_table_to_json_string(dt))
-print("row:", back)
-assert [r["Name"] for r in back] == [MOD.CMD_NAME] and MOD.MENU_CMD in str(back[0]), "row did not read back"
+for r in back:
+    print("row:", r)
+assert [r["Name"] for r in back] == [c[0] for c in MOD.COMMANDS], "rows did not read back"
+assert all(c[1] in str(r) for c, r in zip(MOD.COMMANDS, back)), "command classes did not read back"
 print("BUILD OK: owl-admin v%d -> %s%s" % (
     MOD.VERSION, PATH, "  [DRY RUN -- not shippable]" if PKG != MOD.OUTPUT_PKG else ""))

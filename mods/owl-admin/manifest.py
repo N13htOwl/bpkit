@@ -8,9 +8,11 @@ import oa_config as _cfg
 NAME = "owl-admin"
 OUTPUT_PKG = _cfg.OUTPUT_PKG
 
-# Order matters: 05 (command table) references 04's class, 06 (UI module table) references
-# 03's menu class, and 02 (controller) references 01's widget class + merges 05's and 06's tables.
-BUILD = ["01_alerts_widget.py", "03_menu_widget.py", "04_menu_command.py", "05_command_table.py",
-         "06_ui_module_table.py", "02_controller.py"]
+# Order matters: 02 (controller) creates 01's widget; 03 (admin menu) reads 02's unlocked
+# list; 04 (commands) uses 02 + 08 (savegame); 05/06 (tables) reference 04's commands and
+# 03/07's menus; 09 (the controller's registration override) merges 05 + 06, so it runs last.
+BUILD = ["01_alerts_widget.py", "02_controller.py", "08_savegame.py", "03_menu_widget.py",
+         "07_player_menu.py", "04_commands.py", "05_command_table.py", "06_ui_module_table.py",
+         "09_register.py"]
 
 ASSETS = []

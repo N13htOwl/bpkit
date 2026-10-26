@@ -289,6 +289,25 @@ and neither did a GUIModule object constructed by hand (it isn't in the controll
   runs. Calling it is safe: the active HUD modules stayed active.
 - `GetModule` is **not pure**, so wire its exec pins or the compiler prunes it.
 - Deactivating is animated, so `is_active` is still True for a moment after the call.
+- **Hotkeys: use the row's `ToggleActionName`, not key polling.** Conan uses legacy input action
+  mappings (166 of them, e.g. `ToggleInventory` = Tab). Register your own action at runtime with
+  `InputSettings.GetInputSettings` → `AddActionMapping` (a Make `InputActionKeyMapping` struct
+  wired in, since a typed default is rejected for the const-ref param), and name it in the module
+  row. The controller then toggles the window on that key exactly like its own menus. `bShift`
+  means either Shift key. Polling `IsInputKeyDown` + `WasInputKeyJustPressed` from a ModController
+  Tick never fired in PIE (owl-admin v6). `GetInputSettings`/`AddActionMapping` are **dropped when
+  pasted into the `ModDataTableOperations` override graph** (they paste fine in an EventGraph),
+  so call them from the controller's BeginPlay.
+- **Server-checked login from a content mod** (owl-admin v7): a `RunOnServer` DataActorCommand
+  reads a SaveGame that only exists on the server, then writes a **replicated** array on the
+  always-relevant ModController (`set_blueprint_variable_replication`). Clients only read it.
+  The command hands the PlayerState over via a plain controller variable + a controller custom
+  event, because the array belongs to the controller.
+- **Rebuilding a BP with custom events:** clear the graph and compile *before* re-pasting. The
+  old compiled class still has functions with those names, so the paste renames the events to
+  `CustomEvent`, `CustomEvent_1` and other BPs' calls to them drop.
+- `GetActorOfClass` already returns the class you pass, so a `Cast` on its result is flagged as
+  redundant ("is already a ..., you don't need Cast To").
 
 ## Cosmetic mounted rider — the working recipe
 

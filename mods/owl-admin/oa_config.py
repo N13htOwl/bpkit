@@ -11,18 +11,34 @@ OUTPUT_PKG = "/Game/Mods/OwlAdmin"
 SCRATCH_PKG = "/Game/_Scratch/OwlAdmin"
 
 ALERTS_WBP = "WBP_OwlAlerts"          # HUD board: server alert banner + notice cards
-CONTROLLER = "BP_OwlAdminController"  # ModController: puts WBP_OwlAlerts on screen + registers `dc OwlAdmin`
-MENU_WBP = "WBP_OwlAdminMenu"         # Admin Restrictions Menu board (Step 1: layout + navigation)
-MENU_CMD = "BP_OwlAdminMenuCommand"   # DataActorCommand: `dc OwlAdmin` opens WBP_OwlAdminMenu
-CMD_TABLE = "DT_OwlAdmin_Commands"    # 1-row BlueprintCommandDataRow table merged by the controller
-CMD_NAME = "OwlAdmin"                 # the console command: `dc OwlAdmin`
+CONTROLLER = "BP_OwlAdminController"  # ModController: alerts overlay, unlocked-admins list, registration
+MENU_WBP = "WBP_OwlAdminMenu"         # Admin Restrictions Menu board, behind the Owl Admin login
+PLAYER_MENU_WBP = "WBP_OwlPlayerMenu"  # player menu: the player-facing boards as tabs
+SAVEGAME = "BP_OwlAdminSave"          # SaveGame holding the admin password (server side only)
+SAVE_SLOT = "OwlAdmin"                # its slot name (Saved/SaveGames/OwlAdmin.sav on the server)
+
+# Console commands: (command name, DataActorCommand class, RequireAdmin, RunOnServer, RunOnClient).
+# Admin mode is the Owl Admin login: the password lives only on the server and is checked
+# there (OwlLogin runs on the server), so a client can't unlock itself.
+CMD_TABLE = "DT_OwlAdmin_Commands"    # BlueprintCommandDataRow table merged by the controller
+COMMANDS = [
+    ("OwlAdmin", "BP_OwlAdminMenuCommand", False, False, True),       # open the admin menu (login inside)
+    ("OwlLogin", "BP_OwlLoginCommand", False, True, False),           # dc OwlLogin <password>
+    ("OwlLogout", "BP_OwlLogoutCommand", False, True, False),         # lock admin mode again
+    ("OwlSetPassword", "BP_OwlSetPasswordCommand", True, True, False),  # Conan admins set the password
+]
 CUSTOM_CMD_TABLE = "/Game/Systems/Cheats/CustomConsoleCommandsDataTable"  # game table we merge into
-# Conan only shows the mouse cursor for windows its GUIModuleController manages, so the menu
-# is a UI module: a WindowRoot widget + a DT_UIModuleTable row (merged by the controller).
+
+# Conan only shows the mouse cursor for windows its GUIModuleController manages, so both
+# menus are UI modules: a WindowRoot widget + a DT_UIModuleTable row (merged by the controller).
+# Each row's ToggleActionName is an input action we register at mod init, so Conan's own key
+# handling opens and closes the menu (Shift = either Shift key; action mappings can't tell
+# left from right).
 MENU_MODULE = "OwlAdminMenu"          # module name: GUIModuleController.ToggleModule(MENU_MODULE)
-UI_MODULE_TABLE = "DT_OwlAdmin_UIModules"   # 1-row UIModuleTableRow table
+PLAYER_MODULE = "OwlPlayerMenu"
+ACTIONS = [("OwlAdminToggle", "U"), ("OwlPlayerToggle", "I")]   # (action, key), both with Shift
+UI_MODULE_TABLE = "DT_OwlAdmin_UIModules"   # UIModuleTableRow table, one row per menu
 GAME_UI_MODULE_TABLE = "/Game/UI/Data/DataTables/DT_UIModuleTable"   # game table we merge into
-MENU_HOTKEY = ("LeftShift", "U")      # (held, pressed) FKey names: Left Shift+U runs `dc OwlAdmin`
 
 # The canvas boards are drawn at 1280x720; UMG lays out at a 1080p reference (DPI
 # scale 1.0), so board px * 1.5 = UMG units. UMG font Size is in points (px * 0.75).
@@ -31,9 +47,10 @@ BOARD_SCALE = 1.5
 FONT_BOLD = "/Game/Fonts/Kelson_Sans_Bold.Kelson_Sans_Bold"         # board: Rajdhani 700
 FONT_REGULAR = "/Game/Fonts/Kelson_Sans_Regular.Kelson_Sans_Regular"  # board: Rajdhani 500
 
-VERSION = 6   # v2: hidden until the player has a character; v3: notice cards moved below Conan's
+VERSION = 7   # v2: hidden until the player has a character; v3: notice cards moved below Conan's
               # vitals; v4: hidden while a menu has the mouse cursor up; v5: `dc OwlAdmin` menu;
-              # v6: Left Shift+U hotkey, per-frame tick
+              # v6: Left Shift+U hotkey (polled; didn't work); v7: Shift+U / Shift+I as input
+              # actions, Owl Admin login, player menu
 
 
 def full(pkg, name):
