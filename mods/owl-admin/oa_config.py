@@ -16,6 +16,13 @@ MENU_WBP = "WBP_OwlAdminMenu"         # Admin Restrictions Menu board, behind th
 PLAYER_MENU_WBP = "WBP_OwlPlayerMenu"  # player menu: the player-facing boards as tabs
 SAVEGAME = "BP_OwlAdminSave"          # SaveGame holding the admin password (server side only)
 SAVE_SLOT = "OwlAdmin"                # its slot name (Saved/SaveGames/OwlAdmin.sav on the server)
+SETTINGS_SAVEGAME = "BP_OwlSettingsSave"   # SaveGame holding the applied menu settings (server side only)
+SETTINGS_SLOT = "OwlAdminSettings"         # its own slot, so saving settings never touches the password
+
+# Conan's server settings actor (a BP subclass of ServerSettings): the menu's LIVE settings
+# (menu_defs.LIVE) are pushed into it -- native ones via SetServerSetting, which also writes
+# the server's ServerSettings.ini; the rest are variables on this BP, re-applied at BeginPlay.
+SERVER_SETTINGS_CLS = "/Game/Systems/BP_ServerSettings.BP_ServerSettings_C"
 
 # Console commands: (command name, DataActorCommand class, RequireAdmin, RunOnServer, RunOnClient).
 # Admin mode is the Owl Admin login: the password lives only on the server and is checked
@@ -26,6 +33,7 @@ COMMANDS = [
     ("OwlLogin", "BP_OwlLoginCommand", False, True, False),           # dc OwlLogin <password>
     ("OwlLogout", "BP_OwlLogoutCommand", False, True, False),         # lock admin mode again
     ("OwlSetPassword", "BP_OwlSetPasswordCommand", True, True, False),  # Conan admins set the password
+    ("OwlApply", "BP_OwlApplyCommand", False, True, False),           # the menu's APPLY: every setting value
 ]
 CUSTOM_CMD_TABLE = "/Game/Systems/Cheats/CustomConsoleCommandsDataTable"  # game table we merge into
 
@@ -47,10 +55,11 @@ BOARD_SCALE = 1.5
 FONT_BOLD = "/Game/Fonts/Kelson_Sans_Bold.Kelson_Sans_Bold"         # board: Rajdhani 700
 FONT_REGULAR = "/Game/Fonts/Kelson_Sans_Regular.Kelson_Sans_Regular"  # board: Rajdhani 500
 
-VERSION = 7   # v2: hidden until the player has a character; v3: notice cards moved below Conan's
+VERSION = 8   # v2: hidden until the player has a character; v3: notice cards moved below Conan's
               # vitals; v4: hidden while a menu has the mouse cursor up; v5: `dc OwlAdmin` menu;
               # v6: Left Shift+U hotkey (polled; didn't work); v7: Shift+U / Shift+I as input
-              # actions, Owl Admin login, player menu
+              # actions, Owl Admin login, player menu; v8: APPLY saves settings on the server and
+              # pushes the LIVE ones into Conan's server settings
 
 
 def full(pkg, name):

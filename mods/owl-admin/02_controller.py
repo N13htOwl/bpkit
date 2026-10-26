@@ -34,7 +34,15 @@ list), 0.1 s tick (a menu opening hides the overlay within a tenth of a second).
 ReceiveBeginPlay: registers the menu key actions (OwlAdminToggle = Shift+U, OwlPlayerToggle =
 Shift+I) that the UI module rows (06) name as their ToggleActionName; then, on the server,
 sets the replicated PasswordIsSet from whether the password save exists. While it's false
-the admin menu shows its "set admin password" page instead of the login page.
+the admin menu shows its "set admin password" page instead of the login page. Then it loads
+the applied menu settings (the OwlAdminSettings save) into the replicated AppliedSettings and
+re-applies the LIVE ones that aren't kept in ServerSettings.ini.
+
+Applied settings: `dc OwlApply` (04, the menu's APPLY) saves the values, sets PendingSettings
+and calls OwlSettingsPending here: AppliedSettings = PendingSettings, every LIVE setting
+(menu_defs.LIVE) is pushed into BP_ServerSettings, and the real values are read back into the
+replicated Live_<id> variables. SettingsVersion (replicated) goes up after each load or apply,
+and open admin menus reload their controls when it changes.
 
 The ModDataTableOperations override (table merges) is step 09.
 
@@ -48,8 +56,10 @@ import unreal
 import os
 from bpkit import bridge as bp, ir, build, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
-sys.modules.pop("oa_config", None)
+for _m in ("oa_config", "menu_defs"):
+    sys.modules.pop(_m, None)
 import oa_config as MOD
+import menu_defs as D
 
 assert not unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).is_in_play_in_editor(), \
     "Play-in-Editor is running -- stop Play first"
@@ -81,6 +91,15 @@ bel.set_blueprint_variable_replication(bp_obj, "UnlockedPlayers", unreal.Bluepri
 bel.add_member_variable(bp_obj, "PendingPlayer", ps_type)    # server-only hand-off from the commands
 bel.add_member_variable(bp_obj, "PasswordIsSet", bel.get_basic_type_by_name("bool"))
 bel.set_blueprint_variable_replication(bp_obj, "PasswordIsSet", unreal.BlueprintVariableReplication.REPLICATED)
+REPL = unreal.BlueprintVariableReplication.REPLICATED
+strings_t = bel.get_array_type(bel.get_basic_type_by_name("string"))
+for var, vtype, replicated in [("AppliedSettings", strings_t, True),     # the saved menu values
+                               ("PendingSettings", strings_t, False),    # server-only hand-off from OwlApply
+                               ("SettingsVersion", bel.get_basic_type_by_name("int"), True)] + \
+                              [("Live_" + sid, bel.get_basic_type_by_name("real"), True) for sid in D.LIVE]:
+    bel.add_member_variable(bp_obj, var, vtype)
+    if replicated:
+        bel.set_blueprint_variable_replication(bp_obj, var, REPL)
 print("controller BP:", FULL)
 
 
@@ -215,6 +234,159 @@ pwOn = g.var_set("PasswordIsSet", "bool", pos=(300, 1600))
 pwOn.pin("PasswordIsSet").literal("true")
 g.wire(pwEv, "then", pwOn, "execute")
 
+# ---------------------------------------------------------------- applied settings (server side)
+# AppliedSettings: one string per menu_defs.SETTINGS entry (the values `dc OwlApply` saved),
+# replicated so every admin menu shows them. The LIVE ones are pushed into Conan's server
+# settings, then read back into Live_<id> so menus show what is really in effect (and the
+# server's own values before anything was ever applied). SettingsVersion goes up after every
+# load/apply: an open menu reloads its controls when it changes.
+KSTR = "/Script/Engine.KismetStringLibrary"
+KML = "/Script/Engine.KismetMathLibrary"
+SS_CLS = MOD.SERVER_SETTINGS_CLS
+SETTINGS_SG_CLS = MOD.full(PKG, MOD.SETTINGS_SAVEGAME) + "_C"
+assert unreal.load_object(None, SETTINGS_SG_CLS), "run 08_savegame.py first: no " + SETTINGS_SG_CLS
+N_SETTINGS = len(D.SETTINGS)
+BY_ID = {st["id"]: st for st in D.SETTINGS}
+
+
+def server_settings(entries, pos):
+    """GetActorOfClass(BP_ServerSettings) + IsValid branch, entered from each (node, exec pin)
+    in entries. Returns (actor node, branch)."""
+    gac = g.call("GetActorOfClass", GS, pos=pos)
+    ap = gac.pin("ActorClass").typed("class", ir.obj_path("/Script/Engine.Actor"), direction="EGPD_Input")
+    ap.set("PinType.bIsUObjectWrapper", "True")
+    ap.set("DefaultObject", '"%s"' % SS_CLS)
+    gac.pin("ReturnValue").typed("object", ir.obj_path(SS_CLS), direction="EGPD_Output")
+    for prev, prev_pin in entries:
+        g.wire(prev, prev_pin, gac, "execute")
+    ok = g.call("IsValid", KSL, pos=(pos[0] + 250, pos[1] + 200))
+    g.wire(gac, "ReturnValue", ok, "Object", exec=False)
+    b = g.branch(pos=(pos[0] + 300, pos[1]))
+    g.wire(gac, "then", b, "execute")
+    g.wire(ok, "ReturnValue", b, "Condition", exec=False)
+    return gac, b
+
+
+def applied_value(sid, pos):
+    """FClamp(StringToDouble(AppliedSettings[index]), min, max) -- pure."""
+    lo, hi = D.bounds(BY_ID[sid])
+    arr = g.array_var("AppliedSettings", pos=pos, elem_cat="string")
+    item = g.array_get(arr, "AppliedSettings", D.index(sid), (pos[0] + 200, pos[1]), elem_cat="string")
+    num = g.call("Conv_StringToDouble", KSTR, pos=(pos[0] + 400, pos[1]))
+    g.wire(item, "Output", num, "InString", exec=False)
+    clamp = g.call("FClamp", KML, pos=(pos[0] + 650, pos[1]))
+    g.wire(num, "ReturnValue", clamp, "Value", exec=False)
+    g.typed_input(clamp, "Min", str(float(lo)), "real")
+    g.typed_input(clamp, "Max", str(float(hi)), "real")
+    return clamp
+
+
+def push_live(prev, prev_pin, kinds, pos):
+    """Put the applied LIVE values (of the given kinds: "ini", "bp") into the server settings.
+    Returns the last exec node."""
+    x, y = pos
+    ss, ok = server_settings([(prev, prev_pin)], (x, y))
+    prev, prev_pin = ok, "then"
+    x += 700
+    for sid, (key, how) in D.LIVE.items():
+        if how not in kinds:
+            continue
+        v = applied_value(sid, (x - 300, y + 300))
+        if how == "ini":                     # native setter: applies now, writes ServerSettings.ini
+            n = g.call("SetServerSetting", "/Script/ConanSandbox.ServerSettings", pos=(x + 500, y))
+            g.typed_input(n, "serverSetting", key, "string")
+            g.wire(v, "ReturnValue", n, "value", exec=False)
+        else:                                # a variable on BP_ServerSettings
+            n = g.var_set(key, "real", pos=(x + 500, y), parent=SS_CLS)
+            g.wire(v, "ReturnValue", n, key, exec=False)
+        g.wire(ss, "ReturnValue", n, "self", exec=False)
+        g.wire(prev, prev_pin, n, "execute")
+        prev, prev_pin = n, "then"
+        x += 900
+    return prev, prev_pin
+
+
+def read_live(entries, pos):
+    """Live_<id> = the server settings' real values; then SettingsVersion += 1."""
+    x, y = pos
+    ss, ok = server_settings(entries, (x, y))
+    prev, prev_pin = ok, "then"
+    x += 700
+    for sid, (key, how) in D.LIVE.items():
+        if how == "ini":
+            get = g.call("GetServerSetting", "/Script/ConanSandbox.ServerSettings", pos=(x, y))
+            g.typed_input(get, "serverSetting", key, "string")
+            g.wire(prev, prev_pin, get, "execute")
+            prev, prev_pin, src, src_pin = get, "then", get, "value"
+        else:
+            src = g.var_get(key, "real", parent=SS_CLS, pos=(x, y + 250))
+            src_pin = key
+        g.wire(ss, "ReturnValue", src, "self", exec=False)
+        st = g.var_set("Live_" + sid, "real", pos=(x + 300, y))
+        g.wire(src, src_pin, st, "Live_" + sid, exec=False)
+        g.wire(prev, prev_pin, st, "execute")
+        prev, prev_pin = st, "then"
+        x += 650
+    add = g.call("Add_IntInt", KML, pos=(x, y + 200))
+    g.wire(g.var_get("SettingsVersion", "int", pos=(x - 250, y + 200)), "SettingsVersion", add, "A", exec=False)
+    g.typed_input(add, "B", "1", "int")
+    ver = g.var_set("SettingsVersion", "int", pos=(x + 250, y))
+    g.wire(add, "ReturnValue", ver, "SettingsVersion", exec=False)
+    g.wire(prev, prev_pin, ver, "execute")
+    # the server-settings-missing branch still bumps the version (menus then show the saved values)
+    g.wire(ok, "else", ver, "execute")
+    return ver
+
+
+def set_applied(src, src_pin, pos):
+    n = g.var_set("AppliedSettings", "string", pos=pos)
+    n.pin("AppliedSettings").set("PinType.ContainerType", "Array")
+    g.wire(src, src_pin, n, "AppliedSettings", exec=False)
+    return n
+
+
+# OwlSettingsPending (called by `dc OwlApply` after it set PendingSettings and saved them):
+# AppliedSettings = PendingSettings -> push every LIVE value -> read them back
+apEv = g.custom_event("OwlSettingsPending", pos=(0, 2600))
+apSet = set_applied(g.array_var("PendingSettings", pos=(0, 2800), elem_cat="string"), "PendingSettings", (300, 2600))
+g.wire(apEv, "then", apSet, "execute")
+last, last_pin = push_live(apSet, "then", ("ini", "bp"), (600, 2600))
+read_live([(last, last_pin)], (600 + 700 + 900 * len(D.LIVE), 2600))
+
+# BeginPlay, server, after PasswordIsSet: load the saved settings. The "ini" ones are already
+# in effect (SetServerSetting wrote them to ServerSettings.ini); the "bp" ones are re-applied.
+# No save, an unreadable one, or one from a menu with a different number of settings -> just
+# read the live values.
+y = 3600
+sdse = g.call("DoesSaveGameExist", GS, pos=(2200, 1800))
+g.typed_input(sdse, "SlotName", MOD.SETTINGS_SLOT, "string")
+g.typed_input(sdse, "UserIndex", "0", "int")
+g.wire(setPw, "then", sdse, "execute")
+bSave = g.branch(pos=(2500, 1800))
+g.wire(sdse, "then", bSave, "execute")
+g.wire(sdse, "ReturnValue", bSave, "Condition", exec=False)
+sload = g.call("LoadGameFromSlot", GS, pos=(0, y))
+g.typed_input(sload, "SlotName", MOD.SETTINGS_SLOT, "string")
+g.typed_input(sload, "UserIndex", "0", "int")
+g.wire(bSave, "then", sload, "execute")
+scast = g.cast(SETTINGS_SG_CLS, pos=(300, y))
+g.wire(sload, "ReturnValue", scast, "Object", exec=False)
+g.wire(sload, "then", scast, "execute")
+saved = g.array_var("Settings", pos=(300, y + 250), elem_cat="string", parent=SETTINGS_SG_CLS)
+g.wire(scast, "AsBP Owl Settings Save", saved, "self", exec=False)
+bgSet = set_applied(saved, "Settings", (600, y))
+g.wire(scast, "then", bgSet, "execute")
+slen = g.array_len(g.array_var("AppliedSettings", pos=(600, y + 250), elem_cat="string"), "AppliedSettings",
+                   (850, y + 250), elem_cat="string")
+seq = g.call("EqualEqual_IntInt", KML, pos=(1100, y + 250))
+g.wire(slen, "ReturnValue", seq, "A", exec=False)
+g.typed_input(seq, "B", str(N_SETTINGS), "int")
+bLen = g.branch(pos=(1100, y))
+g.wire(bgSet, "then", bLen, "execute")
+g.wire(seq, "ReturnValue", bLen, "Condition", exec=False)
+last, last_pin = push_live(bLen, "then", ("bp",), (1400, y))
+read_live([(last, last_pin), (bSave, "else"), (scast, "CastFailed"), (bLen, "else")], (1400, y + 900))
+
 # Clear + compile first: a rebuild pastes OwlUnlockPending/OwlLockPending while the compiled class
 # still has functions of those names, and the editor renames the pasted events to "CustomEvent",
 # breaking the commands' calls (seen on the second build, 2026-10-26).
@@ -225,7 +397,7 @@ bp.mark_structurally_modified(_bp_ptr)
 bel.compile_blueprint(bp_obj)
 
 rep = build.build_graph(FULL, g)
-for fn in ("OwlUnlockPending", "OwlLockPending", "OwlPasswordSetPending"):
+for fn in ("OwlUnlockPending", "OwlLockPending", "OwlPasswordSetPending", "OwlSettingsPending"):
     assert unreal.find_object(None, FULL + "_C:" + fn), "custom event %s missing after build (renamed on paste?)" % fn
 if not rep["ok"] and not (rep["dropped_nodes"] or rep["dropped_links"] or rep["orphans"] or rep["wildcards"]):
     # A pasted Make struct carries a benign "Override pins have been removed ... This note will go

@@ -245,6 +245,14 @@ The command must (a) re-apply to all connected players immediately (so existing 
   No BP node reads an arbitrary ini key either. So a content mod can't use a custom cvar/ini value.
 - **ServerSettings panel:** `unreal.ServerSettings` is ~hundreds of hardcoded native getters with NO
   register-by-name / add-custom API; `ModController` has no settings hook. Can't add your own admin slider.
+  **But you CAN change Conan's existing settings live** (owl-admin v8, verified in PIE 2026-10-26):
+  the instance is the `/Game/Systems/BP_ServerSettings` actor (`GetActorOfClass`). Its
+  `SetServerSetting(serverSetting: str, value: float, pc=None, canModifyInGame, updateSession)`
+  (BP-callable, exec) takes the **ini key name** (`PVPEnabled`, `ClanMaxSize`,
+  `BuildingDecayTimeMultiplier`), applies at once AND writes the server's `ServerSettings.ini`;
+  `GetServerSetting(name) -> (value, found)` reads it back. Some ini keys (`StructureDamageMultiplier`,
+  `FriendlyFireDamageMultiplier`) are BP *variables* on BP_ServerSettings: `GetServerSetting` says
+  not-found, set the variable instead (not saved to the ini, so re-apply at BeginPlay).
 - **In-game UMG settings UI** (`ModMenuBase`/`SettingsWidgetBase` exist, with a field-value framework):
   possible, but authoring a WIDGET TREE is unproven in this toolkit, and *surfacing* it (how the player
   opens it) has no verified ModController/PC hook. The `DataActorCommand` console command is simpler and

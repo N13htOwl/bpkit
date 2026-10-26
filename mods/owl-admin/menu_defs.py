@@ -41,7 +41,7 @@ SETTINGS = [
     N("decay", "building", "Decay timer multiplier", "Scales how quickly abandoned structures decay.", 0.5, 5, 0.5, "x", 1.5),
     T("pvp", "combat", "PvP enabled", "Allows players to damage each other.", True),
     T("offline", "combat", "Offline raid protection", "Structures cannot be damaged while all owners are offline.", True),
-    T("ff", "combat", "Friendly fire", "Clan members can damage each other.", False),
+    N("ff", "combat", "Friendly fire damage", "Share of damage clan members deal to each other. 0 turns friendly fire off.", 0, 1, 0.05, "x", 0.25),
     N("sdmg", "combat", "Structure damage multiplier", "Scales damage dealt to player-built structures.", 0.5, 3, 0.5, "x", 1),
     N("resp", "combat", "Respawn cooldown", "Seconds a player must wait before respawning.", 0, 120, 10, "s", 30),
     T("chests", "loot", "Custom loot chests", "Enable chests spawned by the loot chest mod.", True),
@@ -107,6 +107,30 @@ SETTINGS = [
     N("kit3cd", "kits", "Kit 3 cooldown", "Minutes before the same player can claim Kit 3 again.", 0, 10080, 60, "m", 10080),
     N("stack", "loot", "Stack size multiplier", "Scales how many of an item fit in one slot.", 1, 10, 1, "x", 2),
 ]
+
+# Settings Conan itself can change, so APPLY puts them into effect at once. id -> (server
+# setting, how): "ini" = ServerSettings.SetServerSetting (native; also writes the server's
+# ServerSettings.ini), "bp" = a variable on BP_ServerSettings (not in the ini; the controller
+# re-applies the saved value at BeginPlay). Names verified in PIE 2026-10-26 (GetServerSetting /
+# the BP's properties). Every other setting is saved by APPLY but has no game feature behind it yet.
+LIVE = {
+    "pvp": ("PVPEnabled", "ini"),
+    "clan": ("ClanMaxSize", "ini"),
+    "decay": ("BuildingDecayTimeMultiplier", "ini"),
+    "sdmg": ("StructureDamageMultiplier", "bp"),
+    "ff": ("FriendlyFireDamageMultiplier", "bp"),
+}
+
+
+def index(setting_id):
+    """Position of a setting in SETTINGS = its slot in the applied-settings array."""
+    return [s["id"] for s in SETTINGS].index(setting_id)
+
+
+def bounds(st):
+    """(min, max) a value is clamped to: 0..1 for toggles."""
+    return (0, 1) if st["type"] == "toggle" else (st["min"], st["max"])
+
 
 # The player menu (Shift+I): the canvas's player-facing boards, one tab each. Step 1 shows
 # each as a placeholder card; they get built out one board at a time.
