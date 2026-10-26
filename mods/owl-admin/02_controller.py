@@ -10,6 +10,9 @@ PIE 2026-10-26), so "the PC's own pawn is valid" is the gate:
 ReceiveTick:
     IsDedicatedServer?               -> yes: nothing (no screen)
     IsValid(GetPlayerController(0))? -> no: try again next tick
+    Sequence [1]: Left Shift held AND U pressed this frame -> ExecuteConsoleCommand("dc OwlAdmin")
+                  (the console command keeps its RequireAdmin check, so non-admins get nothing)
+    Sequence [0]:
     IsValid(AlertsWidget)?
       no  -> IsValid(PC.K2_GetPawn)? -> yes: CreateWidget(WBP_OwlAlerts, PC)
                                             -> AlertsWidget -> AddToViewport(ZOrder)
@@ -21,8 +24,8 @@ ReceiveTick:
       inventory / journal open+close exactly, ~100 samples)
 
 CDO: OwlVersion stamped (tell a stale spawned class from the current build), always
-relevant (else the controller never exists on MP clients), 0.1 s tick (a menu opening
-hides the overlay within a tenth of a second; each tick is a few cheap reads).
+relevant (else the controller never exists on MP clients), per-frame tick (the Left Shift+U
+hotkey is a one-frame key edge; each tick is a few cheap reads).
 
 ModDataTableOperations override: merges DT_OwlAdmin_Commands (05) into the game's console
 command table so `dc OwlAdmin` works (04), then DT_OwlAdmin_UIModules (06) into
@@ -87,10 +90,40 @@ bPc = g.branch(pos=(600, 0))
 g.wire(bDds, "else", bPc, "execute")
 g.wire(pcValid, "ReturnValue", bPc, "Condition", exec=False)
 
+# PC valid -> Sequence: [0] the alerts overlay, [1] the Left Shift+U menu hotkey
+seq = g.node("K2Node_ExecutionSequence", [], base="ExecutionSequence", pos=(750, 0))
+seq.pin("execute").typed("exec", direction="EGPD_Input")
+seq.pin("then_0").typed("exec", direction="EGPD_Output")
+seq.pin("then_1").typed("exec", direction="EGPD_Output")
+g.wire(bPc, "then", seq, "execute")
+
 wValid = g.call("IsValid", KSL, pos=(900, 200))
 g.wire(widget_var((700, 320)), "AlertsWidget", wValid, "Object", exec=False)
 bUp = g.branch(pos=(900, 0))
-g.wire(bPc, "then", bUp, "execute")
+g.wire(seq, "then_0", bUp, "execute")
+
+# Hotkey: Left Shift held + U pressed this frame -> run `dc OwlAdmin` as this player. Going
+# through the console command (not ToggleModule directly) keeps the row's RequireAdmin check,
+# so non-admins get nothing. Polled per frame (tick interval 0 below): WasInputKeyJustPressed
+# is a one-frame edge and a 0.1 s tick would miss quick taps.
+KEY = ir.struct_path("/Script/InputCore.Key")
+PCLS = "/Script/Engine.PlayerController"
+shift = g.call("IsInputKeyDown", PCLS, pos=(1000, -700))
+g.typed_input(shift, "Key", MOD.MENU_HOTKEY[0], "struct", KEY)
+g.wire(gpc, "ReturnValue", shift, "self", exec=False)
+ukey = g.call("WasInputKeyJustPressed", PCLS, pos=(1000, -550))
+g.typed_input(ukey, "Key", MOD.MENU_HOTKEY[1], "struct", KEY)
+g.wire(gpc, "ReturnValue", ukey, "self", exec=False)
+both = g.call("BooleanAND", "/Script/Engine.KismetMathLibrary", pos=(1250, -650))
+g.wire(shift, "ReturnValue", both, "A", exec=False)
+g.wire(ukey, "ReturnValue", both, "B", exec=False)
+bKey = g.branch(pos=(1450, -800))
+g.wire(seq, "then_1", bKey, "execute")
+g.wire(both, "ReturnValue", bKey, "Condition", exec=False)
+dc = g.call("ExecuteConsoleCommand", KSL, pos=(1700, -800))
+g.typed_input(dc, "Command", "dc " + MOD.CMD_NAME, "string")
+g.wire(gpc, "ReturnValue", dc, "SpecificPlayer", exec=False)
+g.wire(bKey, "then", dc, "execute")
 g.wire(wValid, "ReturnValue", bUp, "Condition", exec=False)
 
 # one pure "player has a character" test, read by both the create and the show/hide branch.
@@ -196,7 +229,7 @@ cdo = unreal.get_default_object(gen)
 cdo.set_editor_property("OwlVersion", MOD.VERSION)
 cdo.set_editor_property("always_relevant", True)
 tk = cdo.get_editor_property("primary_actor_tick")
-tk.set_editor_property("tick_interval", 0.1)
+tk.set_editor_property("tick_interval", 0.0)   # every frame: the hotkey is a one-frame edge
 cdo.set_editor_property("primary_actor_tick", tk)
 assert unreal.EditorAssetLibrary.save_asset(PATH), "save failed"
 print("CDO: OwlVersion=%d always_relevant=%s tick_interval=%.1f" % (

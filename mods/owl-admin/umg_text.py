@@ -33,9 +33,13 @@ class Umg:
         return "(Left=%.6f,Top=%.6f,Right=%.6f,Bottom=%.6f)" % (l * S, t * S, r * S, b * S)
 
     def brush(self, hex_, a=1.0, w=None, h=None):
-        """A solid-colour brush (no texture, drawn as an image)."""
+        """A solid-colour brush (no texture, drawn as an image). The texture is cleared
+        explicitly: brush text is applied over the style's default brush, and UE5's default
+        CheckBox brushes draw their tick from an image FILE (ResourceName), not a
+        ResourceObject, so leaving either out keeps the tick under the tint."""
         size = ",ImageSize=(X=%.6f,Y=%.6f)" % (w * self.S, h * self.S) if w else ""
-        return "(DrawAs=Image,TintColor=(SpecifiedColor=%s)%s)" % (self.lin(hex_, a), size)
+        return "(DrawAs=Image,ResourceObject=None,ResourceName=\"\",TintColor=(SpecifiedColor=%s)%s)" % (
+            self.lin(hex_, a), size)
 
     def font(self, path, px, spacing_px=0):
         em = int(round(1000.0 * spacing_px / px)) if spacing_px else 0

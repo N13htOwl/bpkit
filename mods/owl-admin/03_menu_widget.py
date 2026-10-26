@@ -146,7 +146,9 @@ for tab, title, hint in D.TABS:
                     u.brush("#b3121a", w=76, h=44), u.brush("#d01a22", w=76, h=44), u.brush("#ff4a50", w=76, h=44),
                     u.margin()),
                 "IsFocusable=False"], variable=True)
-            control = ctl
+            # 1px outline so an OFF toggle (#1a0c0c) still reads against the row fill (#120909)
+            control = u.border(r + "_TglFrame", "#5a1a1e", 1.0, u.margin(1, 1, 1, 1), ctl,
+                               halign="HAlign_Center", valign="VAlign_Center")
         else:
             frac = 1 if s["step"] < 1 else 0
             u.widget("/Script/UMG.SpinBox", ctl, [
@@ -159,10 +161,14 @@ for tab, title, hint in D.TABS:
                 "MinFractionalDigits=%d" % frac, "MaxFractionalDigits=%d" % frac,
                 "Font=%s" % u.font(B, 24),
                 "Justification=Center",
-                "WidgetStyle=(BackgroundBrush=%s,HoveredBackgroundBrush=%s,ActiveFillBrush=%s,"
-                "InactiveFillBrush=%s,ForegroundColor=(SpecifiedColor=%s),TextPadding=%s)" % (
-                    u.brush("#1a0c0c"), u.brush("#3a0b0e"), u.brush("#b3121a"), u.brush("#5a1a1e"),
-                    u.lin("#ff5a5f"), u.margin(8, 4, 8, 4)),
+                # no fill bar (it drew value-within-range as a dark slab) and no drag-arrows glyph:
+                # a flat box like the board's value field; hover lightens it to show it's draggable
+                "WidgetStyle=(BackgroundBrush=%s,HoveredBackgroundBrush=%s,"
+                "ActiveFillBrush=(DrawAs=NoDrawType,ResourceObject=None),"
+                "InactiveFillBrush=(DrawAs=NoDrawType,ResourceObject=None),"
+                "ArrowsImage=(DrawAs=NoDrawType,ResourceObject=None),"
+                "ForegroundColor=(SpecifiedColor=%s),TextPadding=%s)" % (
+                    u.brush("#1a0c0c"), u.brush("#3a0b0e"), u.lin("#ff5a5f"), u.margin(8, 4, 8, 4)),
                 "ForegroundColor=(SpecifiedColor=%s)" % u.lin("#ff5a5f"),
             ], variable=True)
             u.sized(r + "_Size", ctl, w=160, h=44)
