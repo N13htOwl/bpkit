@@ -11,7 +11,17 @@ OUTPUT_PKG = "/Game/Mods/OwlAdmin"
 SCRATCH_PKG = "/Game/_Scratch/OwlAdmin"
 
 ALERTS_WBP = "WBP_OwlAlerts"          # HUD board: server alert banner + notice cards
-CONTROLLER = "BP_OwlAdminController"  # ModController: puts WBP_OwlAlerts on screen
+CONTROLLER = "BP_OwlAdminController"  # ModController: puts WBP_OwlAlerts on screen + registers `dc OwlAdmin`
+MENU_WBP = "WBP_OwlAdminMenu"         # Admin Restrictions Menu board (Step 1: layout + navigation)
+MENU_CMD = "BP_OwlAdminMenuCommand"   # DataActorCommand: `dc OwlAdmin` opens WBP_OwlAdminMenu
+CMD_TABLE = "DT_OwlAdmin_Commands"    # 1-row BlueprintCommandDataRow table merged by the controller
+CMD_NAME = "OwlAdmin"                 # the console command: `dc OwlAdmin`
+CUSTOM_CMD_TABLE = "/Game/Systems/Cheats/CustomConsoleCommandsDataTable"  # game table we merge into
+# Conan only shows the mouse cursor for windows its GUIModuleController manages, so the menu
+# is a UI module: a WindowRoot widget + a DT_UIModuleTable row (merged by the controller).
+MENU_MODULE = "OwlAdminMenu"          # module name: GUIModuleController.ToggleModule(MENU_MODULE)
+UI_MODULE_TABLE = "DT_OwlAdmin_UIModules"   # 1-row UIModuleTableRow table
+GAME_UI_MODULE_TABLE = "/Game/UI/Data/DataTables/DT_UIModuleTable"   # game table we merge into
 
 # The canvas boards are drawn at 1280x720; UMG lays out at a 1080p reference (DPI
 # scale 1.0), so board px * 1.5 = UMG units. UMG font Size is in points (px * 0.75).
@@ -20,8 +30,8 @@ BOARD_SCALE = 1.5
 FONT_BOLD = "/Game/Fonts/Kelson_Sans_Bold.Kelson_Sans_Bold"         # board: Rajdhani 700
 FONT_REGULAR = "/Game/Fonts/Kelson_Sans_Regular.Kelson_Sans_Regular"  # board: Rajdhani 500
 
-VERSION = 4   # v2: hidden until the player has a character; v3: notice cards moved below Conan's
-              # vitals; v4: hidden while a menu has the mouse cursor up
+VERSION = 5   # v2: hidden until the player has a character; v3: notice cards moved below Conan's
+              # vitals; v4: hidden while a menu has the mouse cursor up; v5: `dc OwlAdmin` menu
 
 
 def full(pkg, name):

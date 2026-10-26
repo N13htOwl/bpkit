@@ -24,7 +24,11 @@ CDO: OwlVersion stamped (tell a stale spawned class from the current build), alw
 relevant (else the controller never exists on MP clients), 0.1 s tick (a menu opening
 hides the overlay within a tenth of a second; each tick is a few cheap reads).
 
-Run with Play STOPPED, after 01:  python ue_run.py mods/owl-admin/02_controller.py
+ModDataTableOperations override: merges DT_OwlAdmin_Commands (05) into the game's console
+command table so `dc OwlAdmin` works (04), then DT_OwlAdmin_UIModules (06) into
+DT_UIModuleTable so the admin menu (03) is a GUIModule.
+
+Run with Play STOPPED, after 01, 05 and 06:  python ue_run.py mods/owl-admin/02_controller.py
 """
 import sys
 for _m in list(sys.modules):
@@ -140,6 +144,50 @@ g.wire(bPawnVis, "else", hide, "execute")   # no character
 
 rep = build.build_graph(FULL, g)
 assert rep["ok"], "controller graph not clean: %r" % rep
+
+# Register `dc OwlAdmin`: merge DT_OwlAdmin_Commands into the game's console-command table.
+# MergeDataTables is BlueprintProtected -- it resolves ONLY inside the ModDataTableOperations
+# override, which the base ModController calls at mod-init on every instance (CONAN-NOTES
+# "Custom console commands"). Same recipe as mounted-followers/02_manager.py: editor-made
+# override, merge pasted with the tables as quoted DefaultObject refs, then live-wire entry->merge.
+# Second merge: the OwlAdminMenu row (06) into DT_UIModuleTable, so the menu is a GUIModule.
+DTAB = "/Script/Engine.DataTable"
+OPFN = "ModDataTableOperations"
+
+
+def obj_of(pkg_path):
+    return "%s.%s" % (pkg_path, pkg_path.rsplit("/", 1)[1])
+
+
+MERGES = [(obj_of(MOD.CUSTOM_CMD_TABLE), MOD.full(PKG, MOD.CMD_TABLE)),             # `dc OwlAdmin`
+          (obj_of(MOD.GAME_UI_MODULE_TABLE), MOD.full(PKG, MOD.UI_MODULE_TABLE))]  # OwlAdminMenu module
+for _into, ours in MERGES:
+    assert unreal.load_asset(ours.split(".")[0]), "run 05 + 06 first: no " + ours
+bp_ptr, op_gptr = bp.create_function_override(bp_obj, OPFN, unreal.ModController.static_class().get_path_name())
+og = ir.Graph(OPFN)
+prev = None
+for i, (into, ours) in enumerate(MERGES):
+    merge = og.node("K2Node_CallFunction", ['FunctionReference=(MemberName="MergeDataTables",bSelfContext=True)'],
+                    base="CallFunction", pos=(560 + i * 400, 0))
+    for pin, obj in (("MergeIntoDataTable", into), ("ToBeAddedDataTable", ours)):
+        p = merge.pin(pin).typed("object", ir.obj_path(DTAB), direction="EGPD_Input")
+        p.set("DefaultObject", '"%s"' % obj)
+    if prev:
+        og.wire(prev, "then", merge, "execute")
+    prev = merge
+op_res = bp.inject(FULL, og.render(), graph_name=OPFN, compile=False, save=False)
+assert op_res.get("pasted") == len(MERGES) and not op_res.get("dropped_links"), "merge chain dropped: %r" % op_res
+nodes = [(bp.export_nodes([n]), n) for n in bp.graph_nodes(op_gptr)]
+entry = next(n for t, n in nodes if "K2Node_FunctionEntry" in t.splitlines()[0])
+first = next(n for t, n in nodes if "K2Node_CallFunction" in t.splitlines()[0] and MERGES[0][1] in t)
+assert bp.connect_pins(bp.find_pin(entry, "then", 1), bp.find_pin(first, "execute", 0)), "entry->merge wire failed"
+bp.mark_structurally_modified(bp_ptr)
+bel.compile_blueprint(bp_obj)
+op_txt = bp.export_nodes(bp.graph_nodes(op_gptr))
+assert all(a in op_txt and b in op_txt for a, b in MERGES) and "bOrphanedPin=True" not in op_txt, \
+    "override not clean:\n" + op_txt
+for into, ours in MERGES:
+    print("override: %s merges %s into %s" % (OPFN, ours.rsplit(".", 1)[1], into.rsplit(".", 1)[1]))
 
 # CDO defaults (class-level, so every spawned instance carries them)
 gen = unreal.load_object(None, FULL + "_C")

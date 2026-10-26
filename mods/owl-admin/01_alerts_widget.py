@@ -6,7 +6,7 @@ Tree (board px x1.5, see oa_config.BOARD_SCALE):
       AlertOutline (Border #b3121a)  top-centre, y=36
         AlertStack (VBox): AlertAccent (6px #e5242b strip) / AlertFill (Border)
           AlertRow (HBox): AlertLabel "SERVER ALERT" | AlertText
-      NoticesBox (SizeBox w=510)  top-left, (36, 90)
+      NoticesBox (SizeBox w=510)  top-left, NOTICES_POS
         Notices (VBox): one card per NOTICES entry
           NoticeNOutline (Border #4a1a1d) > NoticeNRow (HBox):
             NoticeNAccent (4.5px strip) | NoticeNFill (Border) > NoticeNStack (VBox):
@@ -19,10 +19,6 @@ status icons fill the top-left to y=145, so the notice cards sit below them at N
 instead of the board's (24, 60). The banner keeps the board's top-centre spot: at 16:9 it
 spans x 582-1338, clear of the vitals (x<=357) and the tutorial panel (right 67-392).
 
-Re-running edits the WBP in place: the controller references its class, and delete +
-recreate leaves a stale redirector. Old widgets are moved to the transient package
-(never saved) so the fresh paste keeps its exact names.
-
 Run with Play STOPPED:  python ue_run.py mods/owl-admin/01_alerts_widget.py
 Falls back to /Game/_Scratch/OwlAdmin (DRY RUN) when /Game/Mods/OwlAdmin isn't mounted.
 """
@@ -32,13 +28,13 @@ for _m in list(sys.modules):
         sys.modules.pop(_m, None)
 import unreal
 import os
-import re as _re
 from bpkit import bridge as bp, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
-sys.modules.pop("oa_config", None)
+for _m in ("oa_config", "umg_text"):
+    sys.modules.pop(_m, None)
 import oa_config as MOD
+from umg_text import Umg, prepare_wbp, verify_tree
 
-S = MOD.BOARD_SCALE
 eal = unreal.EditorAssetLibrary
 
 assert not unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).is_in_play_in_editor(), \
@@ -59,113 +55,42 @@ NOTICES = [   # (label, body, accent strip, label colour) -- placeholders straig
     ("Restriction", "[Active restriction, e.g. building limit]", "#4a1a1d", "#b8a29c"),
 ]
 
-
-def lin(hex_, a=1.0):
-    """CSS sRGB hex -> UE FLinearColor text (UMG colours are linear)."""
-    def c(v):
-        v /= 255.0
-        return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
-    r, g, b = (int(hex_[i:i + 2], 16) for i in (1, 3, 5))
-    return "(R=%.6f,G=%.6f,B=%.6f,A=%.6f)" % (c(r), c(g), c(b), a)
-
-
-def margin(l=0, t=0, r=0, b=0):
-    return "(Left=%.6f,Top=%.6f,Right=%.6f,Bottom=%.6f)" % (l * S, t * S, r * S, b * S)
-
-
-# ---------------------------------------------------------------- designer clipboard text
-CLS = {}       # widget name -> class path, for Content= references
-BLOCKS = []
-
-
-def widget(cls, name, props=(), children=()):
-    """Emit one widget object. children = [(slot_cls, child_name, [slot props]), ...]."""
-    CLS[name] = cls
-    out = ['Begin Object Class=%s Name="%s"' % (cls, name)]
-    slots = []
-    for i, (slot_cls, child, sprops) in enumerate(children):
-        sname = "%s_Slot%d" % (name, i)
-        slots.append((slot_cls, sname))
-        out += ['   Begin Object Class=%s Name="%s"' % (slot_cls, sname), "   End Object"]
-    for (slot_cls, sname), (_, child, sprops) in zip(slots, children):
-        out.append('   Begin Object Name="%s"' % sname)
-        out += ["      " + p for p in sprops]
-        out.append("""      Parent="%s'%s'\"""" % (cls, name))
-        out.append("""      Content="%s'%s'\"""" % (CLS[child], child))
-        out.append("   End Object")
-    out += ["   " + p for p in props]
-    out += ["""   Slots(%d)="%s'%s'\"""" % (i, sc, sn) for i, (sc, sn) in enumerate(slots)]
-    out += ["   bIsVariable=True" if cls.endswith("TextBlock") else "   bIsVariable=False",
-            '   DisplayLabel="%s"' % name, "End Object"]
-    BLOCKS.append("\n".join(out))
-    return name
-
-
-def text(name, s, font, px, hex_, spacing_px=0, wrap=False):
-    em = int(round(1000.0 * spacing_px / px)) if spacing_px else 0
-    return widget("/Script/UMG.TextBlock", name, [
-        'Text=INVTEXT("%s")' % s,
-        """Font=(FontObject="/Script/Engine.Font'%s'",Size=%.6f,LetterSpacing=%d)""" % (font, px * S * 0.75, em),
-        "ColorAndOpacity=(SpecifiedColor=%s)" % lin(hex_),
-    ] + (["AutoWrapText=True"] if wrap else []))
-
-
-def border(name, hex_, a, pad, child, halign="HAlign_Fill", valign="VAlign_Fill"):
-    return widget("/Script/UMG.Border", name, [
-        "HorizontalAlignment=%s" % halign, "VerticalAlignment=%s" % valign,
-        "Padding=%s" % pad, "BrushColor=%s" % lin(hex_, a),
-    ], [("/Script/UMG.BorderSlot", child,
-         ["Padding=%s" % pad, "HorizontalAlignment=%s" % halign, "VerticalAlignment=%s" % valign])])
-
-
-def strip(name, hex_, pad):
-    """A solid bar: a childless Border whose padding is its size."""
-    return widget("/Script/UMG.Border", name, ["Padding=%s" % pad, "BrushColor=%s" % lin(hex_)])
-
-
-def box(cls, name, items):
-    """VerticalBox/HorizontalBox; items = [(child, [slot props])]."""
-    return widget("/Script/UMG.%s" % cls, name, [],
-                  [("/Script/UMG.%sSlot" % cls, c, p) for c, p in items])
-
-
-# children are emitted before parents so every Content= reference already has a class
-B, R = MOD.FONT_BOLD, MOD.FONT_REGULAR
+u = Umg(MOD.BOARD_SCALE)
+S, B, R = MOD.BOARD_SCALE, MOD.FONT_BOLD, MOD.FONT_REGULAR
 
 # -- server alert banner (board: top 24, centred; 1px #b3121a frame, 4px #e5242b top)
-text("AlertLabel", ALERT_LABEL.upper(), B, 15, "#f0343a", spacing_px=2)
-text("AlertText", ALERT_TEXT, B, 22, "#ffffff")
-box("HorizontalBox", "AlertRow", [
-    ("AlertLabel", ["Padding=%s" % margin(r=14), "VerticalAlignment=VAlign_Center"]),
+u.text("AlertLabel", ALERT_LABEL.upper(), B, 15, "#f0343a", spacing_px=2)
+u.text("AlertText", ALERT_TEXT, B, 22, "#ffffff")
+u.box("HorizontalBox", "AlertRow", [
+    ("AlertLabel", ["Padding=%s" % u.margin(r=14), "VerticalAlignment=VAlign_Center"]),
     ("AlertText", ["VerticalAlignment=VAlign_Center"]),
 ])
-border("AlertFill", "#1a0809", 0.95, margin(24, 12, 24, 12), "AlertRow")
-strip("AlertAccent", "#e5242b", margin(t=4))
-box("VerticalBox", "AlertStack", [("AlertAccent", ["HorizontalAlignment=HAlign_Fill"]),
-                                  ("AlertFill", ["HorizontalAlignment=HAlign_Fill"])])
-border("AlertOutline", "#b3121a", 1.0, margin(1, 0, 1, 1), "AlertStack")
+u.border("AlertFill", "#1a0809", 0.95, u.margin(24, 12, 24, 12), "AlertRow")
+u.strip("AlertAccent", "#e5242b", u.margin(t=4))
+u.box("VerticalBox", "AlertStack", [("AlertAccent", ["HorizontalAlignment=HAlign_Fill"]),
+                                    ("AlertFill", ["HorizontalAlignment=HAlign_Fill"])])
+u.border("AlertOutline", "#b3121a", 1.0, u.margin(1, 0, 1, 1), "AlertStack")
 
-# -- notice cards (board: left 24, top 60, w 340, 8px apart; 1px #4a1a1d frame, 3px left accent)
+# -- notice cards (board: w 340, 8px apart; 1px #4a1a1d frame, 3px left accent)
 cards = []
 for i, (label, body, accent, label_hex) in enumerate(NOTICES, 1):
     n = "Notice%d" % i
-    text(n + "Label", label.upper(), B, 15, label_hex, spacing_px=2)
-    text(n + "Text", body, R, 17, "#f2e6e2", wrap=True)
-    box("VerticalBox", n + "Stack", [(n + "Label", []), (n + "Text", [])])
-    border(n + "Fill", "#0a0505", 0.85, margin(14, 10, 14, 10), n + "Stack")
-    strip(n + "Accent", accent, margin(l=3))
-    box("HorizontalBox", n + "Row", [
+    u.text(n + "Label", label.upper(), B, 15, label_hex, spacing_px=2)
+    u.text(n + "Text", body, R, 17, "#f2e6e2", wrap=True)
+    u.box("VerticalBox", n + "Stack", [(n + "Label", []), (n + "Text", [])])
+    u.border(n + "Fill", "#0a0505", 0.85, u.margin(14, 10, 14, 10), n + "Stack")
+    u.strip(n + "Accent", accent, u.margin(l=3))
+    u.box("HorizontalBox", n + "Row", [
         (n + "Accent", ["VerticalAlignment=VAlign_Fill"]),
         (n + "Fill", ["Size=(SizeRule=Fill)", "VerticalAlignment=VAlign_Fill"]),
     ])
-    border(n + "Outline", "#4a1a1d", 1.0, margin(1, 1, 1, 1), n + "Row")
-    cards.append((n + "Outline", ["Padding=%s" % margin(b=8), "HorizontalAlignment=HAlign_Fill"]))
-box("VerticalBox", "Notices", cards)
-widget("/Script/UMG.SizeBox", "NoticesBox", ["WidthOverride=%.6f" % (340 * S), "bOverride_WidthOverride=True"],
-       [("/Script/UMG.SizeBoxSlot", "Notices", ["HorizontalAlignment=HAlign_Fill", "VerticalAlignment=VAlign_Top"])])
+    u.border(n + "Outline", "#4a1a1d", 1.0, u.margin(1, 1, 1, 1), n + "Row")
+    cards.append((n + "Outline", ["Padding=%s" % u.margin(b=8), "HorizontalAlignment=HAlign_Fill"]))
+u.box("VerticalBox", "Notices", cards)
+u.sized("NoticesBox", "Notices", w=340, valign="VAlign_Top")
 
 # -- root canvas
-widget("/Script/UMG.CanvasPanel", "OwlAlertsRoot", ["Visibility=HitTestInvisible"], [
+u.widget("/Script/UMG.CanvasPanel", "OwlAlertsRoot", ["Visibility=HitTestInvisible"], [
     ("/Script/UMG.CanvasPanelSlot", "AlertOutline", [
         "LayoutData=(Offsets=(Left=0.000000,Top=%.6f,Right=0.000000,Bottom=0.000000),"
         "Anchors=(Minimum=(X=0.500000,Y=0.000000),Maximum=(X=0.500000,Y=0.000000)),"
@@ -176,35 +101,12 @@ widget("/Script/UMG.CanvasPanel", "OwlAlertsRoot", ["Visibility=HitTestInvisible
         "Anchors=(Minimum=(X=0.000000,Y=0.000000),Maximum=(X=0.000000,Y=0.000000)))" % NOTICES_POS,
         "bAutoSize=True"]),
 ])
-TEXT = "\n".join(reversed(BLOCKS))      # root first, as the designer exports it
-EXPECTED = len(CLS)
-
-# ---------------------------------------------------------------- create, or empty in place
-wbp = eal.load_asset(PATH)        # load_asset, not does_asset_exist (unreliable; bridge.scratch_blueprint)
-if wbp is None:
-    factory = unreal.WidgetBlueprintFactory()
-    factory.set_editor_property("parent_class", unreal.UserWidget)
-    wbp = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
-        MOD.ALERTS_WBP, PKG, unreal.WidgetBlueprint, factory)
-    assert wbp, "create_asset failed for " + PATH
-wbp_ptr = bp.find_object(FULL)
-old = bp.tree_widgets(wbp_ptr)
-if old:
-    transient = unreal.find_object(None, "/Engine/Transient")
-    assert transient, "transient package not found"
-    bp.set_root_widget(wbp_ptr, 0)
-    for w in old:
-        name = _re.match(r'Begin Object Class=\S+ Name="([^"]+)"', bp.export_widgets([w])).group(1)
-        obj = unreal.find_object(None, "%s:WidgetTree.%s" % (FULL, name))
-        assert obj and obj.rename(None, transient), "could not move old widget out: " + name
-    print("emptied the existing tree: moved %d old widgets to the transient package" % len(old))
-before = bp.tree_widgets(wbp_ptr)
-assert not before, "tree still has %d widgets; expected it empty" % len(before)
 
 # ---------------------------------------------------------------- paste + root + compile
-pasted = bp.import_widgets(wbp_ptr, TEXT)
-print("pasted %d/%d widgets" % (pasted, EXPECTED))
-assert pasted == EXPECTED, "paste dropped widgets"
+wbp, wbp_ptr = prepare_wbp(eal, bp, PKG, MOD.ALERTS_WBP, FULL)
+pasted = bp.import_widgets(wbp_ptr, u.render())
+print("pasted %d/%d widgets" % (pasted, len(u.cls)))
+assert pasted == len(u.cls), "paste dropped widgets"
 root = bp.find_object("OwlAlertsRoot", outer=bp.widget_tree(wbp_ptr))
 assert root, "root canvas not found after paste"
 assert bp.set_root_widget(wbp_ptr, root), "RootWidget write did not read back"
@@ -212,15 +114,10 @@ bp.mark_structurally_modified(wbp_ptr)
 unreal.BlueprintEditorLibrary.compile_blueprint(wbp)
 
 # ---------------------------------------------------------------- verify
-ws = bp.tree_widgets(wbp_ptr)
-names = {_re.match(r'Begin Object Class=\S+ Name="([^"]+)"', bp.export_widgets([w])).group(1) for w in ws}
-txt = bp.export_widgets(ws)
-held = set(_re.findall(r"""Content="[^']*'([^']+)'""", txt))
-missing = sorted(set(CLS) - names)
-loose = sorted(names - held - {"OwlAlertsRoot"})          # parentless widgets other than the root
+missing, loose = verify_tree(bp, wbp_ptr, u.cls, "OwlAlertsRoot")
 gen = unreal.load_object(None, FULL + "_C")
 print("widgets in tree: %d | missing: %s | unparented: %s | generated class: %s"
-      % (len(ws), missing or "(none)", loose or "(none)", gen.get_name() if gen else None))
+      % (len(bp.tree_widgets(wbp_ptr)), missing or "(none)", loose or "(none)", gen.get_name() if gen else None))
 assert not missing and not loose and gen, "widget tree not clean"
 assert bp.root_widget(wbp_ptr) == root, "root changed during compile"
 assert eal.save_asset(PATH), "save failed"

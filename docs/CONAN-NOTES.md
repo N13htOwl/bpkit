@@ -265,6 +265,31 @@ by an `Initialized` bool, *not* in `BeginPlay`. Conan's stock template to inspec
   spawns in the packaged game with the flag at its default `false` (live-verified, cooked game,
   2026-06-10). See §Packaging below.
 
+## Mod menus with a mouse cursor — register a GUIModule (2026-10-26)
+
+Conan's **`GUIModuleController`** owns the mouse cursor and input mode. It shows the cursor
+only while one of *its* modules' windows is up and resets `PlayerController.bShowMouseCursor`
+for anything else within a frame, so a plain UserWidget that does
+`AddToViewport` + `bShowMouseCursor=true` + `SetInputMode_UIOnlyEx` loses the cursor at once
+(seen in PIE). `AddWindow`/`SetNeedMouseInput` on an unregistered `WindowRoot` didn't help,
+and neither did a GUIModule object constructed by hand (it isn't in the controller's list).
+
+**The working path** (mods/owl-admin, PIE-verified):
+- The menu WBP's parent is **`/Script/ConanSandbox.WindowRoot`**.
+- A one-row **`UIModuleTableRow`** table is merged into **`/Game/UI/Data/DataTables/DT_UIModuleTable`**
+  from the ModController's `ModDataTableOperations` override (the same recipe as console
+  commands above). The row is modelled on the shipped `ModMenu` row: `Category=Fullscreen`,
+  `CloseOnESC`, `FullscreenGUIAction=Close`, `ZOrder=30`, `bForceHideShortcutBar`, plus
+  **`ShowInPlayingState=True`**.
+- To open or close it, call `GUIModuleController.GetGUIModuleController` → **`ToggleModule(<row name>)`**
+  (or `ActivateModule(name, bool)`). The controller then shows and hides the cursor, the full-screen
+  state and the shortcut bar the way it does for Conan's own menus, and Esc closes the window.
+- The merge registered the module before the first `dc` in PIE. If a merge ever lands after
+  the controller has loaded its modules, `GetModule(name)` returns None until **`LoadModules`**
+  runs. Calling it is safe: the active HUD modules stayed active.
+- `GetModule` is **not pure**, so wire its exec pins or the compiler prunes it.
+- Deactivating is animated, so `is_active` is still True for a moment after the call.
+
 ## Cosmetic mounted rider — the working recipe
 
 Attach + freeze + pose, all content-only and scriptable from Blueprint:
