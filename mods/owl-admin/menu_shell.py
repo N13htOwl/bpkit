@@ -164,7 +164,7 @@ class Shell:
                 framed(u, name + "Frame", "#5a1a1e", "#0d0606", name, u.margin())
                 u.sized(name + "Box", name + "Frame", h=48)
             row.append((name + "Box", ["Padding=%s" % u.margin(l=12 if i else 0), "VerticalAlignment=VAlign_Center"]))
-        u.box("HorizontalBox", "FooterRow", row)
+        u.box("HorizontalBox", "FooterRow", row, variable=True)   # the admin menu hides it while locked
         u.border("Footer", "#0d0606", 1.0, u.margin(28, 0, 28, 0), "FooterRow")
         u.sized("FooterBox", "Footer", h=76)
         u.strip("FooterLine", "#b3121a", u.margin(t=2))

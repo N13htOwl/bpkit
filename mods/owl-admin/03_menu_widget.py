@@ -30,6 +30,7 @@ Graph:
                               (saved values from AppliedSettings, LIVE ones from Live_<id>).
     ApplyBtn.OnClicked     -> run "dc OwlApply <value per setting>" (04 checks admin mode)
     ResetBtn.OnClicked     -> SyncedVersion = -1, so the next tick reloads the server's values
+    (Tick also collapses the footer -- status, Reset, Apply -- unless the settings page is up.)
 
 Run with Play STOPPED, after 02:  python ue_run.py mods/owl-admin/03_menu_widget.py
 """
@@ -355,7 +356,31 @@ both = g.call("BooleanAND", KML, pos=(7400, y0 + 250))
 g.wire(neq, "ReturnValue", both, "A", exec=False)
 g.wire(loaded, "ReturnValue", both, "B", exec=False)
 bSync = g.branch(pos=(7400, y0))
-g.wire(gate_set[0], "then", bSync, "execute")
+
+# Footer (status, Reset, Apply) only on the settings page: collapsed on the login and setup
+# pages, and while the controller isn't found
+SLATEVIS = ir.enum_path("/Script/UMG.ESlateVisibility")
+
+
+def footer_vis(vis, pos):
+    sv = g.call("SetVisibility", "/Script/UMG.Widget", pos=pos)
+    g.typed_input(sv, "InVisibility", vis, "byte", SLATEVIS)
+    g.wire(g.var_get("FooterRow", "object", ir.obj_path("/Script/UMG.HorizontalBox"), pos=(pos[0] - 250, pos[1] + 150)),
+           "FooterRow", sv, "self", exec=False)
+    return sv
+
+
+bFoot = g.branch(pos=(6950, y0 - 600))
+g.wire(gate_set[0], "then", bFoot, "execute")
+g.wire(has, "ReturnValue", bFoot, "Condition", exec=False)
+show_foot = footer_vis("Visible", (7200, y0 - 700))
+hide_foot = footer_vis("Collapsed", (7200, y0 - 400))
+g.wire(bFoot, "then", show_foot, "execute")
+g.wire(bFoot, "else", hide_foot, "execute")
+g.wire(gate_set[1], "then", footer_vis("Collapsed", (7200, y0 - 1000)), "execute")   # no controller: stop here
+# settings still load while locked, so they're ready the moment admin mode unlocks
+g.wire(show_foot, "then", bSync, "execute")
+g.wire(hide_foot, "then", bSync, "execute")
 g.wire(both, "ReturnValue", bSync, "Condition", exec=False)
 
 

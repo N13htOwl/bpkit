@@ -92,10 +92,10 @@ class Umg:
         """A solid bar: a childless Border whose padding is its size."""
         return self.widget("/Script/UMG.Border", name, ["Padding=%s" % pad, "BrushColor=%s" % self.lin(hex_)])
 
-    def box(self, kind, name, items, props=()):
+    def box(self, kind, name, items, props=(), variable=None):
         """VerticalBox/HorizontalBox/ScrollBox; items = [(child, [slot props])]."""
         return self.widget("/Script/UMG.%s" % kind, name, list(props),
-                           [("/Script/UMG.%sSlot" % kind, c, p) for c, p in items])
+                           [("/Script/UMG.%sSlot" % kind, c, p) for c, p in items], variable=variable)
 
     def sized(self, name, child, w=None, h=None, halign="HAlign_Fill", valign="VAlign_Fill"):
         props = []
