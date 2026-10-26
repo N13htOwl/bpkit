@@ -303,6 +303,10 @@ and neither did a GUIModule object constructed by hand (it isn't in the controll
   always-relevant ModController (`set_blueprint_variable_replication`). Clients only read it.
   The command hands the PlayerState over via a plain controller variable + a controller custom
   event, because the array belongs to the controller.
+  First-time setup: the server sets a replicated `PasswordIsSet` bool at BeginPlay
+  (`HasAuthority` → `DoesSaveGameExist`), because clients can't see the server's save. While it's
+  false the menu shows a "set password" page; setting it (Conan admins only) unlocks the setter.
+  Don't make users type console commands into a text box: they won't know the password doesn't exist yet.
 - **Rebuilding a BP with custom events:** clear the graph and compile *before* re-pasting. The
   old compiled class still has functions with those names, so the paste renames the events to
   `CustomEvent`, `CustomEvent_1` and other BPs' calls to them drop.

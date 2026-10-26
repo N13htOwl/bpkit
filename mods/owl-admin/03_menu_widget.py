@@ -7,6 +7,7 @@ Close) | Gate (WidgetSwitcher):
        the canvas, so it uses the board's .field / .btn.primary styles)
     1  Body      -- sidebar of 14 tabs | one scrolling page per tab: a row per setting
                     (CheckBox or SpinBox + unit) and a placeholder card per special panel
+    2  SetupPage -- first-time "set admin password" form, while the server has no password
 | footer (status, Reset, Apply -- not wired yet).
 
 Parent class: Conan's WindowRoot, so the menu is a GUIModule window (row OwlAdminMenu, 06)
@@ -17,11 +18,13 @@ Graph:
     CloseBtn.OnClicked     -> ToggleModule(OwlAdminMenu)
     UnlockBtn.OnClicked    -> run "dc OwlLogin <PasswordBox text>" as the owning player (the
                               server checks it, 04); clear the box
+    SetPwBtn.OnClicked     -> run "dc OwlSetPassword <SetupBox text>" (Conan admins only); clear
     LockBtn.OnClicked      -> run "dc OwlLogout"
     Tick                   -> tab highlight; Gate = 1 if the owning player's PlayerState is in
                               BP_OwlAdminController.UnlockedPlayers (replicated from the
-                              server), else 0. The client only READS the list, so showing the
-                              settings can't be faked by the client changing it.
+                              server), else 0 if its PasswordIsSet (replicated), else 2. The
+                              client only READS both, so showing the settings can't be faked
+                              by the client changing them.
 
 Run with Play STOPPED, after 02:  python ue_run.py mods/owl-admin/03_menu_widget.py
 """
@@ -130,39 +133,51 @@ def setting_rows(tab):
 
 body = s.pages(setting_rows)
 
-# ---------------------------------------------------------------- login page (Gate 0)
-u.text("LoginTitle", "ADMIN LOGIN", B, 30, "#ffffff", spacing_px=4, variable=False)
-u.text("LoginHint", "Enter the Owl Admin password to unlock admin mode.", R, 18, "#b8a29c", wrap=True,
-       variable=False)
-u.widget("/Script/UMG.EditableTextBox", "PasswordBox", [
-    'HintText=INVTEXT("Password")',
-    "IsPassword=True",
-    "WidgetStyle=(BackgroundImageNormal=%s,BackgroundImageHovered=%s,BackgroundImageFocused=%s,"
-    "Padding=%s,ForegroundColor=(SpecifiedColor=%s),"
-    "TextStyle=(Font=%s,ColorAndOpacity=(SpecifiedColor=%s)))" % (
-        u.brush("#120909"), u.brush("#1a0c0c"), u.brush("#1a0c0c"), u.margin(16, 0, 16, 0), u.lin("#f2e6e2"),
-        u.font(R, 22, spacing_px=3), u.lin("#f2e6e2")),
-], variable=True)
-framed(u, "PasswordFrame", "#4a1a1d", "#120909", "PasswordBox", u.margin())
-u.sized("PasswordSize", "PasswordFrame", h=52)
-u.text("UnlockText", "UNLOCK", B, 20, "#ffffff", spacing_px=2, variable=False)
-button(u, "UnlockBtn", "UnlockText", u.margin(), button_style(u, "#b3121a", "#d01a22", "#8a2a2e"))
-u.sized("UnlockSize", "UnlockBtn", h=52)
-u.text("LoginNote", "The server checks the password. No password yet? A Conan admin sets one in the console: "
-       "dc OwlSetPassword <password>", R, 15, "#a8908a", wrap=True, variable=False)
-u.box("VerticalBox", "LoginForm", [
-    ("LoginTitle", ["HorizontalAlignment=HAlign_Center"]),
-    ("LoginHint", ["Padding=%s" % u.margin(t=8, b=24), "HorizontalAlignment=HAlign_Center"]),
-    ("PasswordSize", ["Padding=%s" % u.margin(b=12), "HorizontalAlignment=HAlign_Fill"]),
-    ("UnlockSize", ["Padding=%s" % u.margin(b=20), "HorizontalAlignment=HAlign_Fill"]),
-    ("LoginNote", ["HorizontalAlignment=HAlign_Fill"]),
-])
-u.sized("LoginBox", "LoginForm", w=420, halign="HAlign_Center", valign="VAlign_Center")
-u.border("LoginPage", "#0b0505", 1.0, u.margin(), "LoginBox", halign="HAlign_Center", valign="VAlign_Center")
 
+def form_page(page, title, hint, box, hidden, btn, label, note, placeholder="Password"):
+    """A centred one-field form (the Admin Login board's .field + .btn.primary styles)."""
+    u.text(page + "Title", title, B, 30, "#ffffff", spacing_px=4, variable=False)
+    u.text(page + "Hint", hint, R, 18, "#b8a29c", wrap=True, variable=False)
+    u.widget("/Script/UMG.EditableTextBox", box, [
+        'HintText=INVTEXT("%s")' % placeholder,
+        "IsPassword=%s" % hidden,
+        "WidgetStyle=(BackgroundImageNormal=%s,BackgroundImageHovered=%s,BackgroundImageFocused=%s,"
+        "Padding=%s,ForegroundColor=(SpecifiedColor=%s),"
+        "TextStyle=(Font=%s,ColorAndOpacity=(SpecifiedColor=%s)))" % (
+            u.brush("#120909"), u.brush("#1a0c0c"), u.brush("#1a0c0c"), u.margin(16, 0, 16, 0), u.lin("#f2e6e2"),
+            u.font(R, 22, spacing_px=3), u.lin("#f2e6e2")),
+    ], variable=True)
+    framed(u, box + "Frame", "#4a1a1d", "#120909", box, u.margin())
+    u.sized(box + "Size", box + "Frame", h=52)
+    u.text(btn + "Text", label, B, 20, "#ffffff", spacing_px=2, variable=False)
+    button(u, btn, btn + "Text", u.margin(), button_style(u, "#b3121a", "#d01a22", "#8a2a2e"))
+    u.sized(btn + "Size", btn, h=52)
+    u.text(page + "Note", note, R, 15, "#a8908a", wrap=True, variable=False)
+    u.box("VerticalBox", page + "Form", [
+        (page + "Title", ["HorizontalAlignment=HAlign_Center"]),
+        (page + "Hint", ["Padding=%s" % u.margin(t=8, b=24), "HorizontalAlignment=HAlign_Center"]),
+        (box + "Size", ["Padding=%s" % u.margin(b=12), "HorizontalAlignment=HAlign_Fill"]),
+        (btn + "Size", ["Padding=%s" % u.margin(b=20), "HorizontalAlignment=HAlign_Fill"]),
+        (page + "Note", ["HorizontalAlignment=HAlign_Fill"]),
+    ])
+    u.sized(page + "Wrap", page + "Form", w=420, halign="HAlign_Center", valign="VAlign_Center")
+    return u.border(page + "Page", "#0b0505", 1.0, u.margin(), page + "Wrap",
+                    halign="HAlign_Center", valign="VAlign_Center")
+
+
+# Gate 0: login. Gate 2: first-time setup, shown while the server reports no password (PasswordIsSet).
+login = form_page("Login", "ADMIN LOGIN", "Enter the Owl Admin password to unlock admin mode.",
+                  "PasswordBox", True, "UnlockBtn", "UNLOCK",
+                  "The server checks the password. Forgot it? A Conan admin can set a new one in the console: "
+                  "dc OwlSetPassword <password>")
+setup = form_page("Setup", "SET ADMIN PASSWORD",
+                  "No Owl Admin password is set yet. Choose one: one word, capitals matter.",
+                  "SetupBox", False, "SetPwBtn", "SET PASSWORD",
+                  "Only a Conan server admin can set it (single player counts as admin). "
+                  "You're unlocked straight away; everyone else logs in with it.", placeholder="New password")
 u.widget(SWITCHER, "Gate", ["ActiveWidgetIndex=0"],
          [("/Script/UMG.WidgetSwitcherSlot", w, ["HorizontalAlignment=HAlign_Fill", "VerticalAlignment=VAlign_Fill"])
-          for w in ("LoginPage", body)], variable=True)
+          for w in (login, body, setup)], variable=True)
 
 s.footer(buttons=[("ResetBtn", "RESET", False), ("ApplyBtn", "APPLY RESTRICTIONS", True)])
 s.root("Gate")
@@ -197,20 +212,25 @@ def run_command(prev, prev_pin, command_node_pin, pos):
     return ex
 
 
-# Unlock: "dc OwlLogin <password>" -> the server checks it; clear the box either way
-uev = clicked(g, "UnlockBtn", (0, 5200))
-pwbox = g.var_get("PasswordBox", "object", ir.obj_path(ETB), pos=(0, 5400))
-gt = g.call("GetText", ETB, pos=(250, 5400))
-g.wire(pwbox, "PasswordBox", gt, "self", exec=False)
-ts = g.call("Conv_TextToString", KTXT, pos=(500, 5400))
-g.wire(gt, "ReturnValue", ts, "InText", exec=False)
-cat = g.call("Concat_StrStr", KSTR, pos=(750, 5400))
-g.typed_input(cat, "A", "dc OwlLogin ", "string")
-g.wire(ts, "ReturnValue", cat, "B", exec=False)
-ex = run_command(uev, "then", (cat, "ReturnValue"), (1000, 5200))
-clr = g.call("SetText", ETB, pos=(1300, 5200))
-g.wire(g.var_get("PasswordBox", "object", ir.obj_path(ETB), pos=(1100, 5400)), "PasswordBox", clr, "self", exec=False)
-g.wire(ex, "then", clr, "execute")
+def submit_box(btn, box, command, y):
+    """<btn> click -> run "<command> <box text>" as the owning player, then clear the box."""
+    ev = clicked(g, btn, (0, y))
+    gt = g.call("GetText", ETB, pos=(250, y + 200))
+    g.wire(g.var_get(box, "object", ir.obj_path(ETB), pos=(0, y + 200)), box, gt, "self", exec=False)
+    ts = g.call("Conv_TextToString", KTXT, pos=(500, y + 200))
+    g.wire(gt, "ReturnValue", ts, "InText", exec=False)
+    cat = g.call("Concat_StrStr", KSTR, pos=(750, y + 200))
+    g.typed_input(cat, "A", command + " ", "string")
+    g.wire(ts, "ReturnValue", cat, "B", exec=False)
+    ex = run_command(ev, "then", (cat, "ReturnValue"), (1000, y))
+    clr = g.call("SetText", ETB, pos=(1300, y))
+    g.wire(g.var_get(box, "object", ir.obj_path(ETB), pos=(1100, y + 200)), box, clr, "self", exec=False)
+    g.wire(ex, "then", clr, "execute")
+
+
+# Unlock: the server checks the password. Set password: the server saves it (Conan admins only).
+submit_box("UnlockBtn", "PasswordBox", "dc OwlLogin", 5200)
+submit_box("SetPwBtn", "SetupBox", "dc OwlSetPassword", 6200)
 
 # Lock: "dc OwlLogout"
 lev = clicked(g, "LockBtn", (0, 5800))
@@ -240,9 +260,16 @@ has = g.array_fn("Array_Contains", pos=(6100, 4100), elem_cat="object", elem_sub
 g.array_item_pin(has, "ItemToFind", "object", ir.obj_path(PSTATE))
 g.wire(arr, "UnlockedPlayers", has, "TargetArray", exec=False)
 g.wire(ps, "PlayerState", has, "ItemToFind", exec=False)
+# unlocked -> 1 (settings); else password set -> 0 (login); else 2 (first-time setup)
+pwset = g.var_get("PasswordIsSet", "bool", parent=CTRL_CLS, pos=(6100, 4400))
+g.wire(gac, "ReturnValue", pwset, "self", exec=False)
+locked = g.call("SelectInt", KML, pos=(6400, 4400))
+g.typed_input(locked, "A", "0", "int")
+g.typed_input(locked, "B", "2", "int")
+g.wire(pwset, "PasswordIsSet", locked, "bPickA", exec=False)
 pick = g.call("SelectInt", KML, pos=(6400, 4100))
 g.typed_input(pick, "A", "1", "int")
-g.typed_input(pick, "B", "0", "int")
+g.wire(locked, "ReturnValue", pick, "B", exec=False)
 g.wire(has, "ReturnValue", pick, "bPickA", exec=False)
 for i, (pin, idx) in enumerate((("then", None), ("else", "0"))):
     sai = g.call("SetActiveWidgetIndex", SWITCHER, pos=(6700, 3800 + i * 300))

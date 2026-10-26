@@ -4,7 +4,9 @@
                                            until admin mode is unlocked. Shift+U does the same.
     dc OwlLogin <password>       (server)  check the password; right -> unlock admin mode
     dc OwlLogout                 (server)  lock admin mode again (the menu's Lock button)
-    dc OwlSetPassword <password> (server, Conan admins only)  set the Owl Admin password
+    dc OwlSetPassword <password> (server, Conan admins only)  set the Owl Admin password (the
+                                           admin menu's setup page runs this), mark it set for
+                                           every client, and unlock the caller
 
 Login/logout/set-password run ON THE SERVER: the password is read from the server's
 SaveGame (08) and never sent to clients, and unlocking writes the server-owned, replicated
@@ -203,8 +205,11 @@ def set_password(g, ev):
     g.typed_input(sav, "UserIndex", "0", "int")
     g.wire(crt, "ReturnValue", sav, "SaveGameObject", exec=False)
     g.wire(sp, "then", sav, "execute")
-    message(g, ev, sav, "then", "Owl Admin password set. Players unlock admin mode with: dc OwlLogin <password>",
-            (1500, 0))
+    # tell every client a password now exists (admin menus leave the setup page), and unlock the
+    # Conan admin who set it so they go straight into the menu
+    marked = set_pending_and_call(g, ev, sav, "then", "OwlPasswordSetPending", (1500, 0))
+    done = set_pending_and_call(g, ev, marked, "then", "OwlUnlockPending", (2500, 0))
+    message(g, ev, done, "then", "Owl Admin password set. Admin mode unlocked.", (3500, 0))
 
 
 BUILDERS = {"OwlAdmin": open_menu, "OwlLogin": login, "OwlLogout": logout, "OwlSetPassword": set_password}

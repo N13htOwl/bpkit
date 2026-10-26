@@ -32,7 +32,9 @@ relevant (else the controller never exists on MP clients, and neither would the 
 list), 0.1 s tick (a menu opening hides the overlay within a tenth of a second).
 
 ReceiveBeginPlay: registers the menu key actions (OwlAdminToggle = Shift+U, OwlPlayerToggle =
-Shift+I) that the UI module rows (06) name as their ToggleActionName.
+Shift+I) that the UI module rows (06) name as their ToggleActionName; then, on the server,
+sets the replicated PasswordIsSet from whether the password save exists. While it's false
+the admin menu shows its "set admin password" page instead of the login page.
 
 The ModDataTableOperations override (table merges) is step 09.
 
@@ -77,6 +79,8 @@ ps_type = bel.get_object_reference_type(unreal.PlayerState.static_class())
 bel.add_member_variable(bp_obj, "UnlockedPlayers", bel.get_array_type(ps_type))
 bel.set_blueprint_variable_replication(bp_obj, "UnlockedPlayers", unreal.BlueprintVariableReplication.REPLICATED)
 bel.add_member_variable(bp_obj, "PendingPlayer", ps_type)    # server-only hand-off from the commands
+bel.add_member_variable(bp_obj, "PasswordIsSet", bel.get_basic_type_by_name("bool"))
+bel.set_blueprint_variable_replication(bp_obj, "PasswordIsSet", unreal.BlueprintVariableReplication.REPLICATED)
 print("controller BP:", FULL)
 
 
@@ -192,6 +196,25 @@ for i, (action, key) in enumerate(MOD.ACTIONS):
     g.wire(prev, "then", add, "execute")
     prev = add
 
+# First-time setup: PasswordIsSet (replicated) tells every client's admin menu whether to show
+# the login page or the "set admin password" page. Only the server can see the save, so the
+# server reads it here; OwlPasswordSetPending (called by OwlSetPassword, 04) flips it on later.
+auth = g.call("HasAuthority", "/Script/Engine.Actor", pos=(1300, 2050))
+bAuth = g.branch(pos=(1300, 1800))
+g.wire(prev, "then", bAuth, "execute")
+g.wire(auth, "ReturnValue", bAuth, "Condition", exec=False)
+dse = g.call("DoesSaveGameExist", GS, pos=(1600, 1800))       # impure: in the exec chain
+g.typed_input(dse, "SlotName", MOD.SAVE_SLOT, "string")
+g.typed_input(dse, "UserIndex", "0", "int")
+g.wire(bAuth, "then", dse, "execute")
+setPw = g.var_set("PasswordIsSet", "bool", pos=(1900, 1800))
+g.wire(dse, "then", setPw, "execute")
+g.wire(dse, "ReturnValue", setPw, "PasswordIsSet", exec=False)
+pwEv = g.custom_event("OwlPasswordSetPending", pos=(0, 1600))
+pwOn = g.var_set("PasswordIsSet", "bool", pos=(300, 1600))
+pwOn.pin("PasswordIsSet").literal("true")
+g.wire(pwEv, "then", pwOn, "execute")
+
 # Clear + compile first: a rebuild pastes OwlUnlockPending/OwlLockPending while the compiled class
 # still has functions of those names, and the editor renames the pasted events to "CustomEvent",
 # breaking the commands' calls (seen on the second build, 2026-10-26).
@@ -202,7 +225,7 @@ bp.mark_structurally_modified(_bp_ptr)
 bel.compile_blueprint(bp_obj)
 
 rep = build.build_graph(FULL, g)
-for fn in ("OwlUnlockPending", "OwlLockPending"):
+for fn in ("OwlUnlockPending", "OwlLockPending", "OwlPasswordSetPending"):
     assert unreal.find_object(None, FULL + "_C:" + fn), "custom event %s missing after build (renamed on paste?)" % fn
 if not rep["ok"] and not (rep["dropped_nodes"] or rep["dropped_links"] or rep["orphans"] or rep["wildcards"]):
     # A pasted Make struct carries a benign "Override pins have been removed ... This note will go
