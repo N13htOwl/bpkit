@@ -37,12 +37,14 @@ import ctypes
 
 # --- exported symbols: exact MSVC-decorated names (find them with `python -m bpkit.pe`) ---
 SYM = {
-    # UObject* StaticFindObject(UClass*, UObject* Outer, const TCHAR* Name, bool ExactClass)
+    # UObject* StaticFindObject(UClass*, UObject* Outer, TStringView<TCHAR> Name, EFindObjectFlags)
+    # -- UE 5.8 signature (5.6 took `const TCHAR*, bool ExactClass`)
     "StaticFindObject": ("UnrealEditor-CoreUObject.dll",
-                         b"?StaticFindObject@@YAPEAVUObject@@PEAVUClass@@PEAV1@PEB_W_N@Z"),
-    # void GetObjectsWithOuter(const UObjectBase*, TArray<UObject*>&, bool nested, EObjectFlags, EInternalObjectFlags)
+                         b"?StaticFindObject@@YAPEAVUObject@@PEAVUClass@@PEAV1@V?$TStringView@_W@@W4EFindObjectFlags@@@Z"),
+    # void GetObjectsWithOuter(const UObjectBase*, TArray<UObject*>&, EGetObjectsFlags, EObjectFlags, EInternalObjectFlags)
+    # -- UE 5.8 signature (5.6 took `bool bIncludeNestedObjects` where EGetObjectsFlags is now)
     "GetObjectsWithOuter": ("UnrealEditor-CoreUObject.dll",
-                            b"?GetObjectsWithOuter@@YAXPEBVUObjectBase@@AEAV?$TArray@PEAVUObject@@V?$TSizedDefaultAllocator@$0CA@@@@@_NW4EObjectFlags@@W4EInternalObjectFlags@@@Z"),
+                            b"?GetObjectsWithOuter@@YAXPEBVUObjectBase@@AEAV?$TArray@PEAVUObject@@V?$TSizedDefaultAllocator@$0CA@@@@@W4EGetObjectsFlags@@W4EObjectFlags@@W4EInternalObjectFlags@@@Z"),
     # void UBlueprint::GetAllGraphs(TArray<UEdGraph*>&) const
     "GetAllGraphs": ("UnrealEditor-Engine.dll",
                      b"?GetAllGraphs@UBlueprint@@QEBAXAEAV?$TArray@PEAVUEdGraph@@V?$TSizedDefaultAllocator@$0CA@@@@@@Z"),
@@ -148,6 +150,20 @@ class FString(ctypes.Structure):
         return ctypes.wstring_at(self.data, self.num - 1)
 
 
+class FStringView(ctypes.Structure):
+    """UE TStringView<TCHAR>: { const TCHAR* data; int32 size }, size EXCLUDES any
+    terminator. 16 bytes, so the x64 ABI passes a by-value view as a pointer to a
+    caller-owned copy -- pass ctypes.byref(view). Build with .make()."""
+    _fields_ = [("data", ctypes.c_void_p), ("size", ctypes.c_int32)]
+
+    @classmethod
+    def make(cls, s):
+        buf = ctypes.create_unicode_buffer(s)
+        sv = cls(ctypes.cast(buf, ctypes.c_void_p), len(s))
+        sv._buf = buf                                    # pin so it outlives the call
+        return sv
+
+
 def _read_tarray_ptrs(buf16):
     """Decode a TArray<T*> { ptr; int32 num; int32 max } into a list of pointers."""
     data = ctypes.c_uint64.from_buffer(buf16, 0).value
@@ -194,10 +210,17 @@ def _make_set1_fmemory(node_ptr):
 def find_object(name, outer=None, klass=None, exact=False):
     """StaticFindObject(klass, outer, name, exact). With klass=None it matches any
     class; with outer=None it parses `name` as a full path ('/Game/X.X'); with an
-    outer it finds a subobject by name (e.g. 'EventGraph')."""
+    outer it finds a subobject by name (e.g. 'EventGraph').
+
+    exact=True is refused: on 5.8 it's an EFindObjectFlags bit whose value isn't
+    verified on this build (no engine headers in the kit), and a wrong bit is UB."""
+    if exact:
+        raise NotImplementedError("find_object(exact=True): EFindObjectFlags::ExactClass "
+                                  "value unverified on this engine build")
     fn = proc("StaticFindObject", ctypes.c_void_p, ctypes.c_void_p,
-              ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_bool)
-    return fn(klass, outer, name, exact)
+              ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint32)
+    sv = FStringView.make(name)
+    return fn(klass, outer, ctypes.byref(sv), 0)          # EFindObjectFlags::None
 
 
 def obj_addr(unreal_obj):
@@ -235,11 +258,17 @@ def get_all_graphs(bp_ptr):
 def objects_with_outer(outer_ptr, include_nested=False):
     """Direct UObject children of `outer` (for a UEdGraph: its UEdGraphNodes).
     WARNING: finds children by ownership, so after RemoveNode it still surfaces
-    undo-buffer orphans. Use graph_nodes() for the authoritative live node list."""
+    undo-buffer orphans. Use graph_nodes() for the authoritative live node list.
+
+    include_nested=True is refused: on 5.8 it's an EGetObjectsFlags bit whose value
+    isn't verified on this build."""
+    if include_nested:
+        raise NotImplementedError("objects_with_outer(include_nested=True): EGetObjectsFlags "
+                                  "value unverified on this engine build")
     ta = (ctypes.c_byte * 16)()
     proc("GetObjectsWithOuter", None, ctypes.c_void_p, ctypes.c_void_p,
-         ctypes.c_bool, ctypes.c_uint32, ctypes.c_int32)(
-        outer_ptr, ctypes.byref(ta), include_nested, 0, 0)
+         ctypes.c_uint32, ctypes.c_uint32, ctypes.c_int32)(
+        outer_ptr, ctypes.byref(ta), 0, 0, 0)             # EGetObjectsFlags::None
     return _read_tarray_ptrs(ta)
 
 
