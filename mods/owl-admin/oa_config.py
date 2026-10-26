@@ -20,7 +20,8 @@ BOARD_SCALE = 1.5
 FONT_BOLD = "/Game/Fonts/Kelson_Sans_Bold.Kelson_Sans_Bold"         # board: Rajdhani 700
 FONT_REGULAR = "/Game/Fonts/Kelson_Sans_Regular.Kelson_Sans_Regular"  # board: Rajdhani 500
 
-VERSION = 3   # v2: hidden until the player has a character; v3: notice cards moved below Conan's vitals
+VERSION = 4   # v2: hidden until the player has a character; v3: notice cards moved below Conan's
+              # vitals; v4: hidden while a menu has the mouse cursor up
 
 
 def full(pkg, name):

@@ -13,11 +13,16 @@ ReceiveTick:
     IsValid(AlertsWidget)?
       no  -> IsValid(PC.K2_GetPawn)? -> yes: CreateWidget(WBP_OwlAlerts, PC)
                                             -> AlertsWidget -> AddToViewport(ZOrder)
-      yes -> IsValid(PC.K2_GetPawn)? -> SetVisibility(HitTestInvisible | Collapsed)
-             (re-hides it whenever the pawn is gone again, e.g. death / respawn screens)
+      yes -> (show/hide, below)
+    show/hide (also right after creation, so it never flashes over a menu):
+      IsValid(PC.K2_GetPawn) AND NOT PC.bShowMouseCursor -> HitTestInvisible, else Collapsed
+      (no pawn: death / respawn screens. Cursor shown: one of Conan's full-screen menus is
+      open -- sampled in PIE 2026-10-26, bShowMouseCursor tracked every Followers /
+      inventory / journal open+close exactly, ~100 samples)
 
 CDO: OwlVersion stamped (tell a stale spawned class from the current build), always
-relevant (else the controller never exists on MP clients), 0.5 s tick (it only polls).
+relevant (else the controller never exists on MP clients), 0.1 s tick (a menu opening
+hides the overlay within a tenth of a second; each tick is a few cheap reads).
 
 Run with Play STOPPED, after 01:  python ue_run.py mods/owl-admin/02_controller.py
 """
@@ -107,15 +112,31 @@ g.typed_input(atv, "ZOrder", str(ZORDER), "int")
 g.wire(store, "then", atv, "execute")
 g.wire(widget_var((1900, -20)), "AlertsWidget", atv, "self", exec=False)
 
-# already created: show it while the player has a character, hide it otherwise
+# show/hide: visible only while the player has a character AND no menu has the cursor up.
+# Entered from the already-created branch and straight after creation.
 bPawnVis = g.branch(pos=(1200, 200))
 g.wire(bUp, "then", bPawnVis, "execute")
+g.wire(atv, "then", bPawnVis, "execute")
 g.wire(pawnValid, "ReturnValue", bPawnVis, "Condition", exec=False)
-for pin, vis, y in [("then", "HitTestInvisible", 100), ("else", "Collapsed", 300)]:
-    sv = g.call("SetVisibility", UWIDGET, pos=(1600, y))
+cursor = g.var_get("bShowMouseCursor", "bool", parent="/Script/Engine.PlayerController", pos=(1300, 500))
+g.wire(gpc, "ReturnValue", cursor, "self", exec=False)
+bMenu = g.branch(pos=(1500, 100))
+g.wire(bPawnVis, "then", bMenu, "execute")
+g.wire(cursor, "bShowMouseCursor", bMenu, "Condition", exec=False)
+
+
+def set_vis(vis, pos):
+    sv = g.call("SetVisibility", UWIDGET, pos=pos)
     g.typed_input(sv, "InVisibility", vis, "byte", SLATEVIS)
-    g.wire(bPawnVis, pin, sv, "execute")
-    g.wire(widget_var((1400, y + 80)), "AlertsWidget", sv, "self", exec=False)
+    g.wire(widget_var((pos[0] - 200, pos[1] + 80)), "AlertsWidget", sv, "self", exec=False)
+    return sv
+
+
+show = set_vis("HitTestInvisible", (1800, 0))
+hide = set_vis("Collapsed", (1800, 300))
+g.wire(bMenu, "else", show, "execute")      # character, no menu
+g.wire(bMenu, "then", hide, "execute")      # a menu has the cursor up
+g.wire(bPawnVis, "else", hide, "execute")   # no character
 
 rep = build.build_graph(FULL, g)
 assert rep["ok"], "controller graph not clean: %r" % rep
@@ -127,7 +148,7 @@ cdo = unreal.get_default_object(gen)
 cdo.set_editor_property("OwlVersion", MOD.VERSION)
 cdo.set_editor_property("always_relevant", True)
 tk = cdo.get_editor_property("primary_actor_tick")
-tk.set_editor_property("tick_interval", 0.5)
+tk.set_editor_property("tick_interval", 0.1)
 cdo.set_editor_property("primary_actor_tick", tk)
 assert unreal.EditorAssetLibrary.save_asset(PATH), "save failed"
 print("CDO: OwlVersion=%d always_relevant=%s tick_interval=%.1f" % (
