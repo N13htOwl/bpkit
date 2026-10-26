@@ -12,7 +12,7 @@ and `docs/` for depth; this file is the operational quick-reference.
   winget (sideloaded MSIX); gh `C:\Program Files\GitHub CLI\gh.exe`.
 
 ## The Dev Kit + remote-control channel
-- **Install:** `C:\Program Files\Epic Games\CEUE5Devkit` (177 GB — don't write here). Launch `RunDevKit.bat`.
+- **Install:** `E:\SteamLibrary\steamapps\common\Conan Exiles\CEUE5Devkit` (`BPKIT_ENGINE_ROOT` user env var points here) (177 GB — don't write here). Launch `RunDevKit.bat`.
   **Project:** `...\UE4\ConanSandbox.uproject`. Engine: `5.6.1-365199+++exiles+release` (auto-updates via the Epic launcher; version drift = an update happened).
 - Content-only kit: **no C++ compilation, no binary plugins.** That's why graph editing goes through the
   `bpkit` ctypes bridge (`docs/ARCHITECTURE.md`, `docs/INTERNALS.md`).
@@ -24,7 +24,7 @@ and `docs/` for depth; this file is the operational quick-reference.
 ### Running things (fresh shells bite on this)
 - **WHICH PYTHON:** bare `python` hits the (disabled) Windows Store alias and dies. ALWAYS use the bundled
   interpreter (`bpkit.config.BUNDLED_PYTHON`):
-  `& 'C:\Program Files\Epic Games\CEUE5Devkit\Engine\Binaries\ThirdParty\Python3\Win64\python.exe' ...`
+  `& 'E:\SteamLibrary\steamapps\common\Conan Exiles\CEUE5Devkit\Engine\Binaries\ThirdParty\Python3\Win64\python.exe' ...`
 - **Two usage patterns — don't cross them:**
   - `python examples/smoketest.py` — a **standalone client** (opens its own connection).
   - `python ue_run.py <payload>` — `<payload>` is **editor-side** code (`import unreal; ...`); ue_run ships its
@@ -62,7 +62,7 @@ Things that cost real time here:
   It was chased first during the packaging bringup and was a red herring both times; the real gate is
   the (Mod Asset) placement above. Leave it at the default unless the mod truly needs boot-time loading.
 - **Verify a cooked pak — don't trust the cook silently.** Outer is a "fat" pak; UnrealPak is
-  `C:\Program Files\Epic Games\CEUE5Devkit\Engine\Binaries\Win64\UnrealPak.exe`:
+  `E:\SteamLibrary\steamapps\common\Conan Exiles\CEUE5Devkit\Engine\Binaries\Win64\UnrealPak.exe`:
   `UnrealPak.exe <Mod>.pak -List` (shows `modinfo.json` + per-platform paks), extract, then
   `UnrealPak.exe <Mod>-Windows.utoc -List` for the IoStore **asset** list. `.ucas` is Oodle-compressed
   → text-grep finds nothing; always use `-List`.

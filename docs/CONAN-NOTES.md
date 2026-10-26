@@ -428,7 +428,7 @@ The real game runs a separate **cook → pak** from the Dev Kit's mod tool, e.g.
     `Content/Mods/<mod>/Content/_Scratch/` on the filesystem — verified gone both sides,
     manager BP unaffected.
 - **Inspect a pak — never trust the cook silently.** UnrealPak =
-  `C:\Program Files\Epic Games\CEUE5Devkit\Engine\Binaries\Win64\UnrealPak.exe`.
+  `E:\SteamLibrary\steamapps\common\Conan Exiles\CEUE5Devkit\Engine\Binaries\Win64\UnrealPak.exe`.
   `UnrealPak <Mod>.pak -List` shows the outer files; `-Extract <dir>` then
   `UnrealPak <Mod>-Windows.utoc -List` lists the **inner cooked asset paths** (e.g.
   `.../Content/<Mod>/BP_<X>.uasset`). IoStore `.ucas` chunks are **Oodle-compressed** → a raw

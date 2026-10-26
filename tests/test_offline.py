@@ -3,7 +3,7 @@
 NO editor and NO remote-execution required -- run directly with the bundled
 python (it only needs the repo on sys.path, which it adds from __file__):
 
-    & 'C:\\Program Files\\Epic Games\\CEUE5Devkit\\Engine\\Binaries\\ThirdParty\\Python3\\Win64\\python.exe' tests\\test_offline.py
+    & 'E:\\SteamLibrary\\steamapps\\common\\Conan Exiles\\CEUE5Devkit\\Engine\\Binaries\\ThirdParty\\Python3\\Win64\\python.exe' tests\\test_offline.py
 
 Covers parse/render/edit + the authoring DSL (ir), the compactor (compact),
 config sanity, and that the root `bp_*` shims ARE the canonical `bpkit.*`

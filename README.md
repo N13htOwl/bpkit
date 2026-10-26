@@ -78,7 +78,7 @@ with the editor's **bundled** interpreter (bare `python` hits the disabled Windo
 Store alias):
 
 ```powershell
-$py = 'C:\Program Files\Epic Games\CEUE5Devkit\Engine\Binaries\ThirdParty\Python3\Win64\python.exe'
+$py = 'E:\SteamLibrary\steamapps\common\Conan Exiles\CEUE5Devkit\Engine\Binaries\ThirdParty\Python3\Win64\python.exe'
 
 & $py ue_run.py bpkit\ops\ping.py                 # is the remote-exec channel up?
 & $py ue_run.py bpkit\ops\selftest.py             # does the native ctypes bridge resolve?
