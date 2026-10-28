@@ -220,6 +220,19 @@ PETS = [("Feral Dog", 19184, 500, _PI + "Items/icon_wilddog_01.icon_wilddog_01")
         ("Tiger", 19147, 3500, _PI + "Pets/icon_pet_Tiger.icon_pet_Tiger"),
         ("Greater Wolf", 19126, 4000, _PI + "Pets/icon_pet_Wolf_Alpha.icon_pet_Wolf_Alpha"),
         ("Greater Bear", 19127, 6000, _PI + "Pets/icon_pet_Bear_Alpha.icon_pet_Bear_Alpha")]
+# Animal Masks (player menu): the design's masks (Owl, Fox, Raven, ...) don't exist in Conan, so these
+# are the game's most animal-like head pieces -- (name, ItemTable row = a Transmog head appearance,
+# icon: the row's Icon, else its IconLayers[0]). Wearing one sets the Transmog Head slot (looks only).
+_AR = _PI + "Armor/"
+MASKS = [("Aspect of the Wolf", "91331", _AR + "icon_greatwolf_helm.icon_greatwolf_helm"),
+         ("Aspect of the Bat", "91337", _AR + "icon_batdemon_helm.icon_batdemon_helm"),
+         ("Aspect of Jhil", "91336", _AR + "icon_jhil_helm.icon_jhil_helm"),
+         ("Hyena Skull Helmet", "52551", _AR + "icon_dogs_helmet.icon_dogs_helmet"),
+         ("Reptilian Helm", "52016", _AR + "icon_crocodile_armor_headpiece.icon_crocodile_armor_headpiece"),
+         ("Wild Druid Helm", "95000", _AR + "icon_druid_headDress.icon_druid_headDress"),
+         ("The Horned Helmet", "92107", _AR + "icon_heavy_plated_leather_helmet_v2.icon_heavy_plated_leather_helmet_v2"),
+         ("Scorpion Helm", "92108", _AR + "icon_stygian_M_helmet.icon_stygian_M_helmet"),
+         ("Cimmerian Fur Helmet", "52566", _AR + "icon_cimmerian_M_helmet.icon_cimmerian_M_helmet")]
 CE_SELL_Q = (1, 40)   # NPC sell price, in quarters: 0.25x .. 10x
 CE_BUY_Q = (1, 16)    # NPC buy price: 0.25x .. 4x
 
