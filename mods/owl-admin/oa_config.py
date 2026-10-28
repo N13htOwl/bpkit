@@ -14,6 +14,8 @@ ALERTS_WBP = "WBP_OwlAlerts"          # HUD board: server alert banner + notice 
 CONTROLLER = "BP_OwlAdminController"  # ModController: alerts overlay, unlocked-admins list, registration
 MENU_WBP = "WBP_OwlAdminMenu"         # Admin Restrictions Menu board, behind the Owl Admin login
 PLAYER_MENU_WBP = "WBP_OwlPlayerMenu"  # player menu: the player-facing boards as tabs
+LOGO_TEX = "T_OwlLogo"                # both menus' header logo (13 imports art/owl_logo.png)
+LOGO_PNG = "art/owl_logo.png"         # drawn by art/owl_logo.py, relative to this folder
 SAVEGAME = "BP_OwlAdminSave"          # SaveGame holding the admin password (server side only)
 SAVE_SLOT = "OwlAdmin"                # its slot name (Saved/SaveGames/OwlAdmin.sav on the server)
 RELAY = "BP_OwlRelay"                 # one per player, owned by their PlayerController: carries
@@ -24,6 +26,22 @@ TM_SLOT_PREFIX = "OwlTransmog_"       # its slot: OwlTransmog_<player net id>, o
 TM_MAX_OUTFITS = 6                    # saved outfits per player (the menu has this many rows)
 SETTINGS_SAVEGAME = "BP_OwlSettingsSave"   # SaveGame holding the applied menu settings (server side only)
 SETTINGS_SLOT = "OwlAdminSettings"         # its own slot, so saving settings never touches the password
+# Character editor (the admin menu's Characters tab)
+CE_SAVEGAME = "BP_OwlCeSave"          # one player's Owl wallet + the admin changes made to them
+CE_SLOT_PREFIX = "OwlCe_"             # its slot: OwlCe_<player net id>, one file per player
+CE_LOG_MAX = 50                       # log lines kept per player (oldest dropped)
+ECON_SAVEGAME = "BP_OwlEconomySave"   # accepted currencies + NPC price multipliers (saved, no effect yet)
+ECON_SLOT = "OwlEconomy"
+CE_CONTEXT = "OwlAdmin"               # the context Name given to the game's inventory add/delete calls
+CE_CELL_WBP = "WBP_OwlCeCell"         # one item in the Inventory / Item catalog grids (made at runtime)
+# Bug reports (the player menu's Bug Report tab -> the admin menu's Bug Reports tab)
+BUG_SAVEGAME = "BP_OwlBugSave"       # every player's reports, server side
+BUG_SLOT = "OwlBugReports"
+BUG_MAX = 50                          # reports kept (oldest dropped)
+BUG_WAIT = 60.0                       # seconds a player waits between two reports
+# HUD (the admin menu's HUD tab -> every player's WBP_OwlAlerts)
+HUD_SAVEGAME = "BP_OwlHudSave"        # On: 1/0 per menu_defs.HUD_ITEMS; Text: one per text item
+HUD_SLOT = "OwlHud"
 
 # Conan's server settings actor (a BP subclass of ServerSettings): the menu's LIVE settings
 # (menu_defs.LIVE) are pushed into it -- native ones via SetServerSetting, which also writes
@@ -68,6 +86,10 @@ VERSION = 10  # v2: hidden until the player has a character; v3: notice cards mo
               # pushes the LIVE ones into Conan's server settings; v9: the menu sends passwords
               # through a per-player relay RPC instead of a logged console command; v10: the
               # player menu's Transmog tab (looks + outfits saved per player on the server)
+STEAM_FILE_ID = "3828691613"  # the Workshop item (first upload 2026-10-28, Hidden). Every update must
+                              # go to this id: check the Dev Kit's mod window shows it before uploading
+VERSION_NAME = "V1.0"  # what players see (Bug Report form); matches modinfo.json's 1.0. VERSION
+                       # above is the internal build number (build logs, the controller's OwlVersion)
 
 
 def full(pkg, name):

@@ -65,8 +65,11 @@ class Shell:
         self.badge, self.side_note, self.status = badge, side_note, status
 
     # ------------------------------------------------------------ layout
-    def header(self, extra=()):
-        """extra: [(button name, label)] shown left of Close (e.g. the admin Lock button)."""
+    def header(self, extra=(), logo=None):
+        """extra: [(button name, label)] shown left of Close (e.g. the admin Lock button).
+        logo: a Texture2D object path ('/Game/.../T.T') shown in the top-left corner. The brand
+        (title, BETA, subtitle) is centred over the whole header in an Overlay, so the logo on
+        the left and the buttons on the right don't push it off centre."""
         u, B = self.u, self.B
         u.text("BrandTitle", "OWL ADMIN", B, 28, "#ffffff", spacing_px=4)
         u.text("BetaText", "BETA", B, 15, "#ffffff", spacing_px=3)
@@ -75,11 +78,20 @@ class Shell:
                                             ("BetaBadge", ["Padding=%s" % u.margin(l=12),
                                                            "VerticalAlignment=VAlign_Center"])])
         u.text("BrandSub", self.subtitle, B, 15, "#f0343a", spacing_px=3)
-        u.box("VerticalBox", "Brand", [("BrandRow", []), ("BrandSub", ["Padding=%s" % u.margin(t=2)])])
+        u.box("VerticalBox", "Brand", [("BrandRow", ["HorizontalAlignment=HAlign_Center"]),
+                                       ("BrandSub", ["Padding=%s" % u.margin(t=2), "HorizontalAlignment=HAlign_Center"])])
         u.text("BadgeText", self.badge, B, 18, "#f2e6e2", spacing_px=1)
         framed(u, "Badge", "#5a1a1e", "#150909", "BadgeText", u.margin(16, 8, 16, 8))
-        row = [("Brand", ["Size=(SizeRule=Fill)", "VerticalAlignment=VAlign_Center"]),
-               ("Badge", ["VerticalAlignment=VAlign_Center"])]
+        row = []
+        if logo:
+            u.widget("/Script/UMG.Image", "BrandLogo", [
+                "Brush=(DrawAs=Image,ResourceObject=\"/Script/Engine.Texture2D'%s'\",ImageSize=(X=%.6f,Y=%.6f))"
+                % (logo, 52 * u.S, 52 * u.S)], variable=False)
+            u.sized("BrandLogoBox", "BrandLogo", w=52, h=52)
+            row.append(("BrandLogoBox", ["VerticalAlignment=VAlign_Center"]))
+        u.widget("/Script/UMG.Spacer", "HeaderGap", variable=False)
+        row += [("HeaderGap", ["Size=(SizeRule=Fill)"]),
+                ("Badge", ["VerticalAlignment=VAlign_Center"])]
         for name, label in extra:
             u.text(name + "Text", label, B, 18, "#f2e6e2", spacing_px=2, variable=False)
             button(u, name, name + "Text", u.margin(18, 0, 18, 0), button_style(u, "#150909", "#3a0b0e", "#b3121a"))
@@ -91,7 +103,9 @@ class Shell:
         u.sized("CloseBox", "CloseBtn", w=44, h=44)
         row.append(("CloseBox", ["Padding=%s" % u.margin(l=20), "VerticalAlignment=VAlign_Center"]))
         u.box("HorizontalBox", "HeaderRow", row)
-        u.border("Header", "#140909", 1.0, u.margin(28, 0, 28, 0), "HeaderRow")
+        u.box("Overlay", "HeaderStack", [("HeaderRow", ["HorizontalAlignment=HAlign_Fill", "VerticalAlignment=VAlign_Fill"]),
+                                         ("Brand", ["HorizontalAlignment=HAlign_Center", "VerticalAlignment=VAlign_Center"])])
+        u.border("Header", "#140909", 1.0, u.margin(28, 0, 28, 0), "HeaderStack")
         u.sized("HeaderBox", "Header", h=76)
         u.strip("HeaderLine", "#b3121a", u.margin(t=2))
 

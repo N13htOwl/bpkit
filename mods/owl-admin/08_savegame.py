@@ -6,6 +6,16 @@
     BP_OwlTransmogSave (slot OwlTransmog_<net id>, one per player)  Look: 5 item row names, one
                                                 per transmog slot ("" = worn gear); OutfitNames;
                                                 OutfitLooks: 5 row names per outfit, flattened
+    BP_OwlCeSave       (slot OwlCe_<net id>, one per player)  Balance: their Owl wallet; Log: the
+                                                admin changes made to them, newest last (capped)
+    BP_OwlEconomySave  (slot OwlEconomy)        CurOn: 1/0 per menu_defs.CE_CURRENCIES entry,
+                                                accepted in trades; SellQ / BuyQ: NPC price
+                                                multipliers in quarters (4 = 1.00x). Saved only:
+                                                nothing trades with them yet
+    BP_OwlBugSave      (slot OwlBugReports)     Reports: "time|player|server|kind|title|where|text",
+                                                oldest first (capped at BUG_MAX); Done: 1/0 each
+    BP_OwlHudSave      (slot OwlHud)            On: 1/0 per menu_defs.HUD_ITEMS; Text: one string
+                                                per text item (menu_defs.HUD_TEXTS)
 
 Password: written by `dc OwlSetPassword <password>` (Conan admins only) and read by
 `dc OwlLogin`. Settings: written by `dc OwlApply ...` (the menu's APPLY) and read by the
@@ -33,12 +43,18 @@ assert not unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).is_in_play_i
 PKG = MOD.resolve_pkg()
 bel = unreal.BlueprintEditorLibrary
 string_t = bel.get_basic_type_by_name("string")
+int_t = bel.get_basic_type_by_name("int")
 
 strings_t = bel.get_array_type(string_t)
 for name, variables in ((MOD.SAVEGAME, [("Password", string_t, "")]),
                         (MOD.SETTINGS_SAVEGAME, [("Settings", strings_t, [])]),
                         (MOD.TM_SAVEGAME, [("Look", strings_t, []), ("OutfitNames", strings_t, []),
-                                           ("OutfitLooks", strings_t, [])])):
+                                           ("OutfitLooks", strings_t, [])]),
+                        (MOD.CE_SAVEGAME, [("Balance", int_t, 0), ("Log", strings_t, [])]),
+                        (MOD.ECON_SAVEGAME, [("CurOn", bel.get_array_type(int_t), []), ("SellQ", int_t, 0),
+                                             ("BuyQ", int_t, 0)]),
+                        (MOD.BUG_SAVEGAME, [("Reports", strings_t, []), ("Done", bel.get_array_type(int_t), [])]),
+                        (MOD.HUD_SAVEGAME, [("On", bel.get_array_type(int_t), []), ("Text", strings_t, [])])):
     bp_obj, _ = bp.scratch_blueprint(pkg=PKG, name=name, parent=unreal.SaveGame)
     for var, vtype, _empty in variables:
         bel.add_member_variable(bp_obj, var, vtype)                    # no-op if present

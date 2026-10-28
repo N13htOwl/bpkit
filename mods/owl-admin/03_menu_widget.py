@@ -7,7 +7,11 @@ Close) | Gate (WidgetSwitcher):
     0  LoginPage -- the Admin Login board: password box + Unlock (its form was never drawn on
        the canvas, so it uses the board's .field / .btn.primary styles)
     1  Body      -- sidebar of 14 tabs | one scrolling page per tab: a row per setting
-                    (CheckBox or SpinBox + unit) and a placeholder card per special panel
+                    (CheckBox or SpinBox + unit) and a placeholder card per special panel; the
+                    Characters page is the character editor (ce_panel.py, with its own action
+                    bar), the Bug Reports page lists the players' reports (bug_panel.py) and
+                    the HUD page sets what every player sees on screen (hud_panel.py, with its
+                    own Save): the footer below is hidden on all three
     2  SetupPage -- first-time "set admin password" form, while the server has no password
 | footer (status, Reset, Apply).
 
@@ -43,10 +47,16 @@ import unreal
 import os
 from bpkit import bridge as bp, ir, build, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
-for _m in ("oa_config", "umg_text", "menu_defs", "menu_shell"):
+for _m in ("oa_config", "umg_text", "menu_defs", "menu_shell", "ce_panel", "tm_catalog", "ce_catalog", "tm_cell",
+           "bug_panel", "hud_panel"):
     sys.modules.pop(_m, None)
 import oa_config as MOD
 import menu_defs as D
+import ce_panel
+import bug_panel
+import hud_panel
+import ce_catalog
+import tm_cell
 from umg_text import Umg
 from menu_shell import Shell, button, button_style, framed, clicked, SWITCHER
 
@@ -67,7 +77,7 @@ s = Shell(u, "RESTRICTIONS · PRIVATE REALM", D.TABS, MOD.MENU_MODULE, (B, R), b
                     "for features that are still being built.",
           status="Apply saves every setting on the server.")
 
-s.header(extra=[("LockBtn", "LOCK")])
+s.header(extra=[("LockBtn", "LOCK")], logo=MOD.full(PKG, MOD.LOGO_TEX))
 s.sidebar()
 
 
@@ -143,6 +153,12 @@ def setting_rows(tab):
     for i, panel in enumerate(D.PANELS.get(tab, [])):
         p = s.placeholder("Ph_%s_%d" % (tab, i), "%s: coming in a later step." % panel)
         items.append((p, ["Padding=%s" % u.margin(t=6, b=10)]))
+    if tab == "characters":
+        items += ce_panel.layout(u, B, R)
+    if tab == "reports":
+        items += bug_panel.admin_layout(u, B, R)
+    if tab == "hud":
+        items += hud_panel.admin_layout(u, B, R)
     return items
 
 
@@ -200,6 +216,16 @@ wbp, wbp_ptr = s.paste(unreal, eal, bp, PKG, MOD.MENU_WBP, FULL)
 # the controller SettingsVersion these controls last showed (0 = nothing loaded yet; -1 = reload)
 unreal.BlueprintEditorLibrary.add_member_variable(wbp, "SyncedVersion",
                                                   unreal.BlueprintEditorLibrary.get_basic_type_by_name("int"))
+RELAY_CLS = MOD.full(PKG, MOD.RELAY) + "_C"
+# the Inventory / Item catalog cells: a layout-only cell first, so the graph can create them (12
+# rebuilds it with its graph); the catalogue baked onto the CDO after the build
+CELL_FULL = MOD.full(PKG, MOD.CE_CELL_WBP)
+tm_cell.ensure(unreal, eal, bp, PKG, CELL_FULL, MOD.CE_CELL_WBP, counted=True)
+CATALOG = ce_catalog.catalog(unreal)
+assert len(CATALOG) > 1000, "item catalogue looks wrong: %d items" % len(CATALOG)
+ce_panel.add_variables(unreal, unreal.BlueprintEditorLibrary, wbp, unreal.load_object(None, RELAY_CLS))
+bug_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
+hud_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
 
 # ================================================================ graph
 GS = "/Script/Engine.GameplayStatics"
@@ -228,9 +254,6 @@ def run_command(prev, prev_pin, command_node_pin, pos):
     g.wire(owning_player((pos[0] - 250, pos[1] + 200)), "ReturnValue", ex, "SpecificPlayer", exec=False)
     g.wire(prev, prev_pin, ex, "execute")
     return ex
-
-
-RELAY_CLS = MOD.full(PKG, MOD.RELAY) + "_C"
 
 
 def submit_box(btn, box, event, y):
@@ -393,17 +416,53 @@ def footer_vis(vis, pos):
     return sv
 
 
+# the Characters page has its own action bar (ce_panel) and Bug Reports has nothing to apply: the
+# settings footer is hidden on both
+page_idx = g.call("GetActiveWidgetIndex", SWITCHER, pos=(6500, y0 - 300))
+g.wire(g.var_get("TabPages", "object", ir.obj_path(SWITCHER), pos=(6300, y0 - 300)), "TabPages", page_idx, "self",
+       exec=False)
+on_chars = g.call("EqualEqual_IntInt", KML, pos=(6700, y0 - 300))
+g.wire(page_idx, "ReturnValue", on_chars, "A", exec=False)
+g.typed_input(on_chars, "B", str([t for t, _ti, _h in D.TABS].index("characters")), "int")
+on_reports = g.call("EqualEqual_IntInt", KML, pos=(6700, y0 - 450))
+g.wire(page_idx, "ReturnValue", on_reports, "A", exec=False)
+g.typed_input(on_reports, "B", str([t for t, _ti, _h in D.TABS].index("reports")), "int")
+either = g.call("BooleanOR", KML, pos=(6700, y0 - 50))
+g.wire(on_chars, "ReturnValue", either, "A", exec=False)
+g.wire(on_reports, "ReturnValue", either, "B", exec=False)
+on_hud = g.call("EqualEqual_IntInt", KML, pos=(6700, y0 - 600))
+g.wire(page_idx, "ReturnValue", on_hud, "A", exec=False)
+g.typed_input(on_hud, "B", str([t for t, _ti, _h in D.TABS].index("hud")), "int")
+any_own = g.call("BooleanOR", KML, pos=(6900, y0 - 50))
+g.wire(either, "ReturnValue", any_own, "A", exec=False)
+g.wire(on_hud, "ReturnValue", any_own, "B", exec=False)
+not_chars = g.call("Not_PreBool", KML, pos=(6700, y0 - 150))
+g.wire(any_own, "ReturnValue", not_chars, "A", exec=False)
+foot_on = g.call("BooleanAND", KML, pos=(6900, y0 - 200))
+g.wire(has, "ReturnValue", foot_on, "A", exec=False)
+g.wire(not_chars, "ReturnValue", foot_on, "B", exec=False)
 bFoot = g.branch(pos=(6950, y0 - 600))
 g.wire(gate_set[0], "then", bFoot, "execute")
-g.wire(has, "ReturnValue", bFoot, "Condition", exec=False)
+g.wire(foot_on, "ReturnValue", bFoot, "Condition", exec=False)
 show_foot = footer_vis("Visible", (7200, y0 - 700))
 hide_foot = footer_vis("Collapsed", (7200, y0 - 400))
 g.wire(bFoot, "then", show_foot, "execute")
 g.wire(bFoot, "else", hide_foot, "execute")
 g.wire(gate_set[1], "then", footer_vis("Collapsed", (7200, y0 - 1000)), "execute")   # no controller: stop here
-# settings still load while locked, so they're ready the moment admin mode unlocks
-g.wire(show_foot, "then", bSync, "execute")
-g.wire(hide_foot, "then", bSync, "execute")
+# the character editor's per-frame work (ce_panel), then the settings sync (they still load while
+# locked, so they're ready the moment admin mode unlocks)
+_ce_exits = ce_panel.tick(g, u, RELAY_CLS, CELL_FULL + "_C", owning_player, [(show_foot, "then"), (hide_foot, "then")],
+                          (has, "ReturnValue"), (on_chars, "ReturnValue"))
+# then the Bug Reports page's
+_bug = ce_panel._Ctx(g, u, RELAY_CLS, owning_player)
+_bug_exits = bug_panel.admin_tick(_bug, _ce_exits, (has, "ReturnValue"), (on_reports, "ReturnValue"), y=60000)
+# then the HUD page's (it reads the controller found above)
+_hud = ce_panel._Ctx(g, u, RELAY_CLS, owning_player)
+for e, ep in hud_panel.admin_tick(_hud, _bug_exits, (on_hud, "ReturnValue"), (gac, "ReturnValue"), CTRL_CLS, y=90000):
+    g.wire(e, ep, bSync, "execute")
+ce_panel.clicks(g, u, RELAY_CLS, owning_player)
+bug_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 80000)
+hud_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 150000)
 g.wire(both, "ReturnValue", bSync, "Condition", exec=False)
 
 
@@ -484,12 +543,20 @@ unsync = g.var_set("SyncedVersion", "int", pos=(300, y1 - 400))
 unsync.pin("SyncedVersion").literal("-1")
 g.wire(rev, "then", unsync, "execute")
 
+# Clear + compile first, or a rebuild renames the pasted OwlCePick event (see 07); 12 then
+# rebuilds the cell, whose call to it went stale
+_bp_ptr, _g_ptr = bp.find_graph(FULL, "EventGraph")
+bp.clear_graph(_bp_ptr, _g_ptr)
+bp.mark_structurally_modified(_bp_ptr)
+unreal.BlueprintEditorLibrary.compile_blueprint(wbp)
 rep = build.build_graph(FULL, g)
 assert rep["ok"], "menu graph not clean: %r" % {k: rep[k] for k in ("dropped_nodes", "dropped_links", "orphans", "wildcards", "errors")}
 
 # ================================================================ verify
 gen = unreal.load_object(None, FULL + "_C")
 assert gen, "no generated class"
+assert unreal.find_object(None, FULL + "_C:OwlCePick"), "OwlCePick missing after build (renamed on paste?)"
+ce_panel.bake(unreal.get_default_object(gen), CATALOG)
 assert bp.root_widget(wbp_ptr) == s.root_ptr, "root changed during compile"
 pw = bp.export_widgets([bp.find_object("PasswordBox", outer=bp.widget_tree(wbp_ptr))])
 assert "IsPassword=True" in pw, "PasswordBox lost IsPassword:\n" + pw
@@ -497,6 +564,6 @@ spin = bp.export_widgets([bp.find_object("Set_cap", outer=bp.widget_tree(wbp_ptr
 print("SpinBox readback (Set_cap):", [l.strip() for l in spin.splitlines()
                                       if any(k in l for k in ("Value=", "Delta="))][:2])
 assert eal.save_asset(PATH), "save failed"
-print("BUILD OK: owl-admin v%d -> %s  (%d widgets, %d tabs, %d settings, login gate)%s" % (
-    MOD.VERSION, FULL, len(u.cls), len(D.TABS), len(D.SETTINGS),
+print("BUILD OK: owl-admin v%d -> %s  (%d widgets, %d tabs, %d settings, %d catalogue items, login gate)%s" % (
+    MOD.VERSION, FULL, len(u.cls), len(D.TABS), len(D.SETTINGS), len(CATALOG),
     "  [DRY RUN -- not shippable]" if PKG != MOD.OUTPUT_PKG else ""))

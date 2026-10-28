@@ -34,6 +34,16 @@ Tick (0.1 s):
         the result changes (TmApplied: the pawn + the ten mesh ids); an empty look turns it off.
         The live layout is only ever read: writing to it rewrites the player's character.
 
+Character editor (the admin menu's Characters tab, 03): the OwlServerCe* / OwlClientCe* events
+and their Ce* / Sv* variables come from ce_server.py (see its docstring).
+
+Bug reports (the player menu's Bug Report tab, 07; the admin menu's Bug Reports tab, 03): the
+OwlServerBug* / OwlClientBug* events and their Bug* / SvBug* variables come from bug_server.py.
+
+The HUD tab (03): OwlServerHudSet / OwlClientHudSaved and their Hud* / SvHud* variables come
+from hud_server.py. It writes the controller's (02) replicated HudOn / HudText / HudVer, so 02
+must have them: build 02 before this.
+
 Run with Play STOPPED, after 02 (which creates the empty asset so it can spawn it) and 08:
     python ue_run.py mods/owl-admin/10_relay.py
 """
@@ -46,10 +56,14 @@ import unreal
 import os
 from bpkit import bridge as bp, ir, build, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
-for _m in ("oa_config", "oa_auth", "menu_defs"):
+for _m in ("oa_config", "oa_auth", "menu_defs", "ce_server", "bug_server", "hud_server"):
     sys.modules.pop(_m, None)
+import types
 import oa_config as MOD
 import menu_defs as D
+import ce_server
+import bug_server
+import hud_server
 from oa_auth import Auth
 
 assert not unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).is_in_play_in_editor(), \
@@ -77,7 +91,11 @@ EVENTS = {"OwlServerLogin": RUN_ON_SERVER, "OwlServerSetPassword": RUN_ON_SERVER
           "OwlClientTm": RUN_ON_OWNING_CLIENT}
 
 TM_SG_CLS = MOD.full(PKG, MOD.TM_SAVEGAME) + "_C"
-assert unreal.load_object(None, TM_SG_CLS), "build 08 first: no " + TM_SG_CLS
+for c in (TM_SG_CLS, MOD.full(PKG, MOD.CE_SAVEGAME) + "_C", MOD.full(PKG, MOD.ECON_SAVEGAME) + "_C",
+          MOD.full(PKG, MOD.BUG_SAVEGAME) + "_C", MOD.full(PKG, MOD.HUD_SAVEGAME) + "_C"):
+    assert unreal.load_object(None, c), "build 08 first: no " + c
+assert unreal.get_default_object(unreal.load_object(None, CTRL_CLS)).get_editor_property("HudVer") is not None, \
+    "rebuild 02 first: the controller has no HudVer"
 
 bel = unreal.BlueprintEditorLibrary
 bp_obj, _ = bp.scratch_blueprint(pkg=PKG, name=MOD.RELAY, parent=unreal.Actor)
@@ -95,6 +113,15 @@ for var, vtype, repl in (("TmLook", strings_t, REPL.REPLICATED),
                          ("TmOn", bel.get_basic_type_by_name("bool"), REPL.NONE)):
     bel.add_member_variable(bp_obj, var, vtype)
     bel.set_blueprint_variable_replication(bp_obj, var, repl)
+# character editor (ce_server): the owner's copy the admin panel reads + the server's scratch values
+CE_VARS = ce_server.variables(unreal, bel, unreal.load_object(None, MOD.full(PKG, MOD.CE_SAVEGAME) + "_C"))
+# bug reports (bug_server): the same, for the Bug Report / Bug Reports tabs
+CE_VARS += bug_server.variables(unreal, bel, unreal.load_object(None, MOD.full(PKG, MOD.BUG_SAVEGAME) + "_C"))
+# the HUD tab (hud_server)
+CE_VARS += hud_server.variables(unreal, bel)
+for var, vtype in CE_VARS:
+    bel.add_member_variable(bp_obj, var, vtype)
+    bel.set_blueprint_variable_replication(bp_obj, var, REPL.NONE)
 
 g = ir.Graph("EventGraph")
 
@@ -165,10 +192,10 @@ def owner_pc(prev, prev_pin, pos):
     return cast
 
 
-def save_slot(cast, pos):
-    """"OwlTransmog_" + the owner's net id, ':' and '/' made file-name safe (pure). In Play-in-
-    Editor the id ends "-Context_<n>" and n goes up every session; that tail is dropped so a
-    look survives a Play restart (real Steam ids have no such tail)."""
+def save_slot(cast, pos, prefix=MOD.TM_SLOT_PREFIX):
+    """prefix + the net id of cast's ConanPlayerController, ':' and '/' made file-name safe
+    (pure). In Play-in-Editor the id ends "-Context_<n>" and n goes up every session; that tail is
+    dropped so a save survives a Play restart (real Steam ids have no such tail)."""
     nid = g.call("GetPlayerNetId", CPC, pos=pos)
     g.wire(cast, "AsConan Player Controller", nid, "self", exec=False)
     sp = g.call("Split", KSTR, pos=(pos[0], pos[1] + 200))
@@ -186,7 +213,7 @@ def save_slot(cast, pos):
         g.typed_input(rep, "To", "_", "string")
         prev = (rep, "ReturnValue")
     cat = g.call("Concat_StrStr", KSTR, pos=(pos[0] + 1000, pos[1]))
-    g.typed_input(cat, "A", MOD.TM_SLOT_PREFIX, "string")
+    g.typed_input(cat, "A", prefix, "string")
     g.wire(prev[0], prev[1], cat, "B", exec=False)
     return cat
 
@@ -623,6 +650,22 @@ clearKey.pin("TmApplied").literal("")
 g.wire(setOff, "then", clearKey, "execute")
 toggle(clearKey, "then", False, (real, "CharacterLayout"), (3800, Y + 2800))
 
+# ---------------------------------------------------------------- character editor (admin menu, 03)
+EVENTS.update(ce_server.build(types.SimpleNamespace(
+    g=g, self_call=self_call, owner_pc=owner_pc, save_slot=save_slot, Auth=Auth, MOD=MOD, PKG=PKG,
+    CTRL_CLS=CTRL_CLS, SG_CLS=SG_CLS, RUN_ON_SERVER=RUN_ON_SERVER, RUN_ON_OWNING_CLIENT=RUN_ON_OWNING_CLIENT),
+    y0=24000))
+# ---------------------------------------------------------------- bug reports (player menu 07, admin menu 03)
+EVENTS.update(bug_server.build(types.SimpleNamespace(
+    g=g, self_call=self_call, owner_pc=owner_pc, save_slot=save_slot, Auth=Auth, MOD=MOD, PKG=PKG,
+    CTRL_CLS=CTRL_CLS, SG_CLS=SG_CLS, RUN_ON_SERVER=RUN_ON_SERVER, RUN_ON_OWNING_CLIENT=RUN_ON_OWNING_CLIENT),
+    y0=48000))
+# ---------------------------------------------------------------- the HUD tab (admin menu 03)
+EVENTS.update(hud_server.build(types.SimpleNamespace(
+    g=g, self_call=self_call, owner_pc=owner_pc, save_slot=save_slot, Auth=Auth, MOD=MOD, PKG=PKG,
+    CTRL_CLS=CTRL_CLS, SG_CLS=SG_CLS, RUN_ON_SERVER=RUN_ON_SERVER, RUN_ON_OWNING_CLIENT=RUN_ON_OWNING_CLIENT),
+    y0=60000))
+
 # Clear + compile first, or a rebuild renames the pasted events (see 02)
 bel.compile_blueprint(bp_obj)
 _bp_ptr, _g_ptr = bp.find_graph(FULL, "EventGraph")
@@ -651,16 +694,18 @@ for fn, want in EVENTS.items():
     f = unreal.find_object(None, FULL + "_C:" + fn)
     assert f, "custom event %s missing after build (renamed on paste?)" % fn
     flags = ctypes.c_uint32.from_address(bp.obj_addr(f) + 0xd0).value
-    assert flags & want == want, "%s has the wrong net flags: 0x%08x" % (fn, flags)
-    print("%s: %s, reliable (flags 0x%08x)" % (fn, "Run on Server" if want == RUN_ON_SERVER else "Run on owning Client",
-                                               flags))
+    assert flags & want == want and (want or not flags & 0x40), "%s has the wrong net flags: 0x%08x" % (fn, flags)
+    print("%s: %s (flags 0x%08x)" % (fn, {RUN_ON_SERVER: "Run on Server, reliable",
+                                          RUN_ON_OWNING_CLIENT: "Run on owning Client, reliable"}.get(want, "not replicated"),
+                                     flags))
 # TmVersion (the old replicated counter) is gone; drop it from the asset
 bel.remove_unused_variables(bp_obj)
 bel.compile_blueprint(bp_obj)
 
 gen = unreal.load_object(None, FULL + "_C")
 cdo = unreal.get_default_object(gen)
-for var in ("TmLook", "TmPawn", "TmOutfitNames", "TmOutfitLooks", "TmClientVer", "TmApplied", "TmOn", "TmAsked"):
+for var in ("TmLook", "TmPawn", "TmOutfitNames", "TmOutfitLooks", "TmClientVer", "TmApplied", "TmOn", "TmAsked") + \
+        tuple(v for v, _t in CE_VARS):
     cdo.get_editor_property(var)                               # raises if remove_unused_variables took it
 cdo.set_editor_property("replicates", True)
 cdo.set_editor_property("only_relevant_to_owner", False)     # everyone sees everyone's look

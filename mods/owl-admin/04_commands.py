@@ -139,18 +139,7 @@ def apply_settings(g, ev):
     """Only for players in admin mode (UnlockedPlayers, checked here on the server: the command
     row can't require Conan admin, since Owl admins needn't be). Exactly one value per setting."""
     a = auth(g, ev)
-    gac = a.controller(ev, "then", (0, 0))
-    arr = g.array_var("UnlockedPlayers", pos=(250, 250), elem_cat="object", elem_sub=ir.obj_path(PSTATE),
-                      parent=CTRL_CLS)
-    g.wire(gac, "ReturnValue", arr, "self", exec=False)
-    has = g.array_fn("Array_Contains", pos=(500, 250), elem_cat="object", elem_sub=ir.obj_path(PSTATE))
-    g.array_item_pin(has, "ItemToFind", "object", ir.obj_path(PSTATE))
-    g.wire(arr, "UnlockedPlayers", has, "TargetArray", exec=False)
-    g.wire(a.caller_state((250, 400)), "PlayerState", has, "ItemToFind", exec=False)
-    bIn = g.branch(pos=(500, 0))
-    g.wire(gac, "then", bIn, "execute")
-    g.wire(has, "ReturnValue", bIn, "Condition", exec=False)
-    a.message(bIn, "else", "Admin mode is locked. Log in on the admin menu first.", (800, 700))
+    bIn, gac = a.require_unlocked(ev, "then", (0, 0))
     n = g.array_len(ev, "Parameters", (800, 250), elem_cat="string")
     eq = g.call("EqualEqual_IntInt", KML, pos=(1050, 250))
     g.wire(n, "ReturnValue", eq, "A", exec=False)

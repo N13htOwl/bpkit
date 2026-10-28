@@ -47,6 +47,12 @@ and calls OwlSettingsPending here: AppliedSettings = PendingSettings, every LIVE
 replicated Live_<id> variables. SettingsVersion (replicated) goes up after each load or apply,
 and open admin menus reload their controls when it changes.
 
+HUD tab: HudOn (1/0 per menu_defs.HUD_ITEMS), HudText (per HUD_TEXTS) and HudVer replicate.
+The relay's OwlServerHudSet (hud_server) writes them; BeginPlay loads the OwlHud save into them
+on the server. On every machine with a screen, the tick (while the overlay is up) sets the
+overlay's texts and shows each part that is on whenever HudVer passes HudSeen, and keeps the
+players-online count (GameState.PlayerArray) current while that part is on.
+
 The ModDataTableOperations override (table merges) is step 09.
 
 Run with Play STOPPED, after 01:  python ue_run.py mods/owl-admin/02_controller.py
@@ -112,6 +118,17 @@ for var, vtype, replicated in [("AppliedSettings", strings_t, True),     # the s
     bel.add_member_variable(bp_obj, var, vtype)
     if replicated:
         bel.set_blueprint_variable_replication(bp_obj, var, REPL)
+# the HUD tab's values (hud_server writes them, the server loads them at BeginPlay); HudSeen is
+# this machine's: the HudVer its HUD last showed
+ints_t = bel.get_array_type(bel.get_basic_type_by_name("int"))
+for var, vtype, replicated in (("HudOn", ints_t, True), ("HudText", strings_t, True),
+                               ("HudVer", bel.get_basic_type_by_name("int"), True),
+                               ("HudSeen", bel.get_basic_type_by_name("int"), False)):
+    bel.add_member_variable(bp_obj, var, vtype)
+    bel.set_blueprint_variable_replication(bp_obj, var, REPL if replicated else
+                                           unreal.BlueprintVariableReplication.NONE)
+HUD_SG_CLS = MOD.full(PKG, MOD.HUD_SAVEGAME) + "_C"
+assert unreal.load_object(None, HUD_SG_CLS), "run 08_savegame.py first: no " + HUD_SG_CLS
 print("controller BP:", FULL)
 
 
@@ -223,6 +240,111 @@ hide = set_vis("Collapsed", (1800, 300))
 g.wire(bMenu, "else", show, "execute")      # character, no menu
 g.wire(bMenu, "then", hide, "execute")      # a menu has the cursor up
 g.wire(bPawnVis, "else", hide, "execute")   # no character
+
+# HUD tab, on every machine with a screen, while the overlay is up: when HudVer moved past what
+# this HUD last showed, set the texts and show each part that is on (a text part also needs text);
+# then, every tick, the players-online count while it's on.
+TEXTBLOCK = "/Script/UMG.TextBlock"
+KMLc = "/Script/Engine.KismetMathLibrary"
+KTXTc = "/Script/Engine.KismetTextLibrary"
+HUD_PARTS = {"alert": ("AlertOutline", "AlertText"), "notice": ("Notice1Outline", "Notice1Text"),
+             "restrict": ("Notice2Outline", "Notice2Text"), "players": ("HudPlayers", None),
+             "hint": ("HudHint", None)}
+assert [k for k, _l, _d, _n in D.HUD_ITEMS] == list(HUD_PARTS), "HUD_PARTS out of step with menu_defs.HUD_ITEMS"
+WAS = "AsWBP Owl Alerts"
+hx, hy = 2200, 6500
+wcast = g.cast(WIDGET_CLS, pos=(hx, hy))
+g.wire(widget_var((hx - 250, hy + 200)), "AlertsWidget", wcast, "Object", exec=False)
+g.wire(show, "then", wcast, "execute")
+
+
+def hud_item(arr, k, cat, pos):
+    a = g.array_var(arr, pos=pos, elem_cat=cat)
+    return g.array_get(a, arr, k, (pos[0] + 200, pos[1]), elem_cat=cat)
+
+
+def part(name, cls, pos):
+    n = g.var_get(name, "object", ir.obj_path(cls), parent=WIDGET_CLS, pos=pos)
+    g.wire(wcast, WAS, n, "self", exec=False)
+    return n
+
+
+vneq = g.call("NotEqual_IntInt", KMLc, pos=(hx + 300, hy + 250))
+g.wire(g.var_get("HudVer", "int", pos=(hx + 100, hy + 250)), "HudVer", vneq, "A", exec=False)
+g.wire(g.var_get("HudSeen", "int", pos=(hx + 100, hy + 400)), "HudSeen", vneq, "B", exec=False)
+bNew = g.branch(pos=(hx + 300, hy))
+g.wire(wcast, "then", bNew, "execute")
+g.wire(vneq, "ReturnValue", bNew, "Condition", exec=False)
+seen = g.var_set("HudSeen", "int", pos=(hx + 600, hy))
+g.wire(g.var_get("HudVer", "int", pos=(hx + 450, hy + 250)), "HudVer", seen, "HudSeen", exec=False)
+g.wire(bNew, "then", seen, "execute")
+exits = [(seen, "then")]          # every (node, exec pin) the next node is entered from
+
+
+def chain(node, pin="execute"):
+    global exits
+    for e, ep in exits:
+        g.wire(e, ep, node, pin)
+    exits = [(node, "then")]
+
+
+x = hx + 900
+for k, (key, (box, txt)) in enumerate(HUD_PARTS.items()):
+    on = g.call("EqualEqual_IntInt", KMLc, pos=(x, hy + 450))
+    g.wire(hud_item("HudOn", k, "int", (x - 400, hy + 450)), "Output", on, "A", exec=False)
+    g.typed_input(on, "B", "1", "int")
+    cond = on
+    if txt:
+        text = hud_item("HudText", k, "string", (x - 400, hy + 750))
+        tt = g.call("Conv_StringToText", KTXTc, pos=(x, hy + 750))
+        g.wire(text, "Output", tt, "InString", exec=False)
+        st = g.call("SetText", TEXTBLOCK, pos=(x, hy))
+        g.wire(part(txt, TEXTBLOCK, (x - 200, hy + 900)), txt, st, "self", exec=False)
+        g.wire(tt, "ReturnValue", st, "InText", exec=False)
+        chain(st)
+        ln = g.call("Len", "/Script/Engine.KismetStringLibrary", pos=(x + 200, hy + 750))
+        g.wire(text, "Output", ln, "S", exec=False)
+        has_text = g.call("Greater_IntInt", KMLc, pos=(x + 400, hy + 750))
+        g.wire(ln, "ReturnValue", has_text, "A", exec=False)
+        g.typed_input(has_text, "B", "0", "int")
+        cond = g.call("BooleanAND", KMLc, pos=(x + 600, hy + 600))
+        g.wire(on, "ReturnValue", cond, "A", exec=False)
+        g.wire(has_text, "ReturnValue", cond, "B", exec=False)
+    b = g.branch(pos=(x + 300, hy))
+    chain(b)
+    g.wire(cond, "ReturnValue", b, "Condition", exec=False)
+    ends = []
+    for j, (pin, vis) in enumerate((("then", "HitTestInvisible"), ("else", "Collapsed"))):
+        sv = g.call("SetVisibility", UWIDGET, pos=(x + 600, hy + 300 * j))
+        g.typed_input(sv, "InVisibility", vis, "byte", SLATEVIS)
+        g.wire(part(box, UWIDGET, (x + 400, hy + 1050 + 150 * j)), box, sv, "self", exec=False)
+        g.wire(b, pin, sv, "execute")
+        ends.append((sv, "then"))
+    exits = ends                  # the next part is entered from both visibility setters
+    x += 1300
+
+# every tick (a new version or not): the players-online count, while that part is on
+exits += [(bNew, "else")]
+pon = g.call("EqualEqual_IntInt", KMLc, pos=(x, hy + 450))
+g.wire(hud_item("HudOn", [k for k, _l, _d, _n in D.HUD_ITEMS].index("players"), "int", (x - 400, hy + 450)),
+       "Output", pon, "A", exec=False)
+g.typed_input(pon, "B", "1", "int")
+bp_on = g.branch(pos=(x + 300, hy))
+chain(bp_on)
+g.wire(pon, "ReturnValue", bp_on, "Condition", exec=False)
+gstate = g.call("GetGameState", GS, pos=(x + 300, hy + 600))
+players = g.array_var("PlayerArray", pos=(x + 550, hy + 600), elem_cat="object", elem_sub=ir.obj_path(PSTATE),
+                      parent="/Script/Engine.GameStateBase")
+g.wire(gstate, "ReturnValue", players, "self", exec=False)
+pcount = g.array_len(players, "PlayerArray", (x + 800, hy + 600), elem_cat="object", elem_sub=ir.obj_path(PSTATE))
+pstr = g.call("Conv_IntToString", "/Script/Engine.KismetStringLibrary", pos=(x + 1000, hy + 600))
+g.wire(pcount, "ReturnValue", pstr, "InInt", exec=False)
+ptxt = g.call("Conv_StringToText", KTXTc, pos=(x + 1200, hy + 600))
+g.wire(pstr, "ReturnValue", ptxt, "InString", exec=False)
+pset = g.call("SetText", TEXTBLOCK, pos=(x + 600, hy))
+g.wire(part("HudPlayersText", TEXTBLOCK, (x + 400, hy + 300)), "HudPlayersText", pset, "self", exec=False)
+g.wire(ptxt, "ReturnValue", pset, "InText", exec=False)
+g.wire(bp_on, "then", pset, "execute")
 
 # Admin mode list, server side (called by the OwlLogin / OwlLogout commands after they set
 # PendingPlayer). AddUnique / RemoveItem on the replicated array; clients get the change.
@@ -431,7 +553,62 @@ bLen = g.branch(pos=(1100, y))
 g.wire(bgSet, "then", bLen, "execute")
 g.wire(seq, "ReturnValue", bLen, "Condition", exec=False)
 last, last_pin = push_live(bLen, "then", ("bp",), (1400, y))
-read_live([(last, last_pin), (bSave, "else"), (scast, "CastFailed"), (bLen, "else")], (1400, y + 900))
+loaded = read_live([(last, last_pin), (bSave, "else"), (scast, "CastFailed"), (bLen, "else")], (1400, y + 900))
+
+# BeginPlay, server, after the settings: the HUD tab's save into HudOn / HudText, if it holds one
+# value per item; else the defaults stay (everything off). HudVer goes up either way, so every
+# client's HUD shows what the server has.
+HUD_N, HUD_T = len(D.HUD_ITEMS), len(D.HUD_TEXTS)
+y = 4800
+hdse = g.call("DoesSaveGameExist", GS, pos=(0, y))
+g.typed_input(hdse, "SlotName", MOD.HUD_SLOT, "string")
+g.typed_input(hdse, "UserIndex", "0", "int")
+g.wire(loaded, "then", hdse, "execute")
+bHud = g.branch(pos=(250, y))
+g.wire(hdse, "then", bHud, "execute")
+g.wire(hdse, "ReturnValue", bHud, "Condition", exec=False)
+hload = g.call("LoadGameFromSlot", GS, pos=(500, y))
+g.typed_input(hload, "SlotName", MOD.HUD_SLOT, "string")
+g.typed_input(hload, "UserIndex", "0", "int")
+g.wire(bHud, "then", hload, "execute")
+hcast = g.cast(HUD_SG_CLS, pos=(800, y))
+g.wire(hload, "ReturnValue", hcast, "Object", exec=False)
+g.wire(hload, "then", hcast, "execute")
+HAS = "AsBP Owl Hud Save"
+sizes_ok = None
+for k, (field, cat, n) in enumerate((("On", "int", HUD_N), ("Text", "string", HUD_T))):
+    a = g.array_var(field, pos=(800, y + 300 + 150 * k), elem_cat=cat, parent=HUD_SG_CLS)
+    g.wire(hcast, HAS, a, "self", exec=False)
+    ln = g.array_len(a, field, (1050, y + 300 + 150 * k), elem_cat=cat)
+    eq = g.call("EqualEqual_IntInt", KML, pos=(1300, y + 300 + 150 * k))
+    g.wire(ln, "ReturnValue", eq, "A", exec=False)
+    g.typed_input(eq, "B", str(n), "int")
+    if sizes_ok is None:
+        sizes_ok = eq
+    else:
+        both = g.call("BooleanAND", KML, pos=(1550, y + 400))
+        g.wire(sizes_ok, "ReturnValue", both, "A", exec=False)
+        g.wire(eq, "ReturnValue", both, "B", exec=False)
+        sizes_ok = both
+bSizes = g.branch(pos=(1100, y))
+g.wire(hcast, "then", bSizes, "execute")
+g.wire(sizes_ok, "ReturnValue", bSizes, "Condition", exec=False)
+prev, prev_pin = bSizes, "then"
+for k, (var, field, cat) in enumerate((("HudOn", "On", "int"), ("HudText", "Text", "string"))):
+    st = g.var_set(var, cat, pos=(1800 + 300 * k, y))
+    st.pin(var).set("PinType.ContainerType", "Array")
+    src = g.array_var(field, pos=(1800 + 300 * k, y + 600), elem_cat=cat, parent=HUD_SG_CLS)
+    g.wire(hcast, HAS, src, "self", exec=False)
+    g.wire(src, field, st, var, exec=False)
+    g.wire(prev, prev_pin, st, "execute")
+    prev, prev_pin = st, "then"
+hinc = g.call("Add_IntInt", KML, pos=(2450, y + 250))
+g.wire(g.var_get("HudVer", "int", pos=(2250, y + 250)), "HudVer", hinc, "A", exec=False)
+g.typed_input(hinc, "B", "1", "int")
+hver = g.var_set("HudVer", "int", pos=(2500, y))
+g.wire(hinc, "ReturnValue", hver, "HudVer", exec=False)
+for e, ep in ((prev, prev_pin), (bHud, "else"), (hcast, "CastFailed"), (bSizes, "else")):
+    g.wire(e, ep, hver, "execute")
 
 # Clear + compile first: a rebuild pastes OwlUnlockPending/OwlLockPending while the compiled class
 # still has functions of those names, and the editor renames the pasted events to "CustomEvent",
@@ -466,13 +643,20 @@ gen = unreal.load_object(None, FULL + "_C")
 assert gen, "no generated class after compile: " + FULL + "_C"
 cdo = unreal.get_default_object(gen)
 cdo.set_editor_property("OwlVersion", MOD.VERSION)
+# the HUD tab's defaults: one value per item (the tick reads them by index), all off, no text;
+# HudSeen -1 so a new HUD always loads once
+cdo.set_editor_property("HudOn", [0] * len(D.HUD_ITEMS))
+cdo.set_editor_property("HudText", [""] * len(D.HUD_TEXTS))
+cdo.set_editor_property("HudSeen", -1)
 cdo.set_editor_property("always_relevant", True)
 tk = cdo.get_editor_property("primary_actor_tick")
 tk.set_editor_property("tick_interval", 0.1)
 cdo.set_editor_property("primary_actor_tick", tk)
 assert unreal.EditorAssetLibrary.save_asset(PATH), "save failed"
-print("CDO: OwlVersion=%d always_relevant=%s tick_interval=%.1f" % (
-    cdo.get_editor_property("OwlVersion"), cdo.get_editor_property("always_relevant"),
+assert list(cdo.get_editor_property("HudOn")) == [0] * len(D.HUD_ITEMS), "HudOn default didn't stick"
+print("CDO: OwlVersion=%d HudOn=%s always_relevant=%s tick_interval=%.1f" % (
+    cdo.get_editor_property("OwlVersion"), list(cdo.get_editor_property("HudOn")),
+    cdo.get_editor_property("always_relevant"),
     cdo.get_editor_property("primary_actor_tick").get_editor_property("tick_interval")))
 print("BUILD OK: owl-admin v%d -> %s%s" % (
     MOD.VERSION, FULL, "  [DRY RUN -- not shippable]" if PKG != MOD.OUTPUT_PKG else ""))

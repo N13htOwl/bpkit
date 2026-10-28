@@ -74,12 +74,12 @@ class Umg:
         self.blocks.append("\n".join(out))
         return name
 
-    def text(self, name, s, font, px, hex_, spacing_px=0, wrap=False, variable=None):
+    def text(self, name, s, font, px, hex_, spacing_px=0, wrap=False, variable=None, props=()):
         return self.widget("/Script/UMG.TextBlock", name, [
             'Text=INVTEXT("%s")' % self.quote(s),
             "Font=%s" % self.font(font, px, spacing_px),
             "ColorAndOpacity=(SpecifiedColor=%s)" % self.lin(hex_),
-        ] + (["AutoWrapText=True"] if wrap else []), variable=variable)
+        ] + (["AutoWrapText=True"] if wrap else []) + list(props), variable=variable)
 
     def border(self, name, hex_, a, pad, child, halign="HAlign_Fill", valign="VAlign_Fill", props=(), variable=None):
         return self.widget("/Script/UMG.Border", name, [
@@ -98,14 +98,15 @@ class Umg:
         return self.widget("/Script/UMG.%s" % kind, name, list(props),
                            [("/Script/UMG.%sSlot" % kind, c, p) for c, p in items], variable=variable)
 
-    def sized(self, name, child, w=None, h=None, halign="HAlign_Fill", valign="VAlign_Fill"):
+    def sized(self, name, child, w=None, h=None, halign="HAlign_Fill", valign="VAlign_Fill", variable=None):
         props = []
         if w is not None:
             props += ["WidthOverride=%.6f" % (w * self.S), "bOverride_WidthOverride=True"]
         if h is not None:
             props += ["HeightOverride=%.6f" % (h * self.S), "bOverride_HeightOverride=True"]
         return self.widget("/Script/UMG.SizeBox", name, props, [
-            ("/Script/UMG.SizeBoxSlot", child, ["HorizontalAlignment=%s" % halign, "VerticalAlignment=%s" % valign])])
+            ("/Script/UMG.SizeBoxSlot", child, ["HorizontalAlignment=%s" % halign, "VerticalAlignment=%s" % valign])],
+            variable=variable)
 
     def render(self):
         return "\n".join(reversed(self.blocks))

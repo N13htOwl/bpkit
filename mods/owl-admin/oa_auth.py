@@ -5,6 +5,7 @@ command's CallingPlayerController) and the relay (10: the player is the relay's 
     a.check_password(prev, prev_pin, (pw_node, pw_pin), pos)       # right -> unlock the caller
     a.store_password(prev, prev_pin, (pw_node, pw_pin), pos)       # save it, mark it set, unlock
     a.message(prev, prev_pin, "text", pos)                         # Conan message box for the caller
+    branch, ctrl = a.require_unlocked(prev, prev_pin, pos)         # caller in admin mode? -> branch "then"
 
 Everything here runs ON THE SERVER: the password is read from and written to the server's
 SaveGame (08) and never sent to clients. Unlocking writes the server-owned, replicated
@@ -60,6 +61,25 @@ class Auth:
         ps = self.g.var_get("PlayerState", "object", ir.obj_path(PSTATE), parent="/Script/Engine.Controller", pos=pos)
         self.g.wire(self.caller[0], self.caller[1], ps, "self", exec=False)
         return ps
+
+    def require_unlocked(self, prev, prev_pin, pos):
+        """Go on only if the caller is in admin mode (the controller's UnlockedPlayers, server
+        side); else tell them it's locked. Returns (branch, controller node): carry on from
+        branch "then"."""
+        g, (x, y) = self.g, pos
+        gac = self.controller(prev, prev_pin, (x, y))
+        arr = g.array_var("UnlockedPlayers", pos=(x + 250, y + 250), elem_cat="object", elem_sub=ir.obj_path(PSTATE),
+                          parent=self.ctrl_cls)
+        g.wire(gac, "ReturnValue", arr, "self", exec=False)
+        has = g.array_fn("Array_Contains", pos=(x + 500, y + 250), elem_cat="object", elem_sub=ir.obj_path(PSTATE))
+        g.array_item_pin(has, "ItemToFind", "object", ir.obj_path(PSTATE))
+        g.wire(arr, "UnlockedPlayers", has, "TargetArray", exec=False)
+        g.wire(self.caller_state((x + 250, y + 400)), "PlayerState", has, "ItemToFind", exec=False)
+        bIn = g.branch(pos=(x + 500, y))
+        g.wire(gac, "then", bIn, "execute")
+        g.wire(has, "ReturnValue", bIn, "Condition", exec=False)
+        self.message(bIn, "else", "Admin mode is locked. Log in on the admin menu first.", (x + 800, y + 700))
+        return bIn, gac
 
     def set_pending_and_call(self, prev, prev_pin, event, pos):
         """controller.PendingPlayer = caller's PlayerState; controller.<event>(). Returns the

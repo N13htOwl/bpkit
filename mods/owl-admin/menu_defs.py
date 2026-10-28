@@ -8,6 +8,7 @@ PANELS   -- the board's special panels per tab; Step 1 shows each as a placehold
 
 TABS = [
     ("access", "Access & Log", "Who can open this panel, and who tried"),
+    ("reports", "Bug Reports", "What players reported, newest first"),
     ("building", "Building", "Limits on structures, clans and decay"),
     ("combat", "Combat", "PvP rules and raid protection"),
     ("loot", "Items & Loot", "Chest behaviour and item restrictions"),
@@ -17,6 +18,7 @@ TABS = [
     ("kits", "Kits", "Item bundles players can claim with /kits"),
     ("trading", "Trading", "Rules for players trading items with each other"),
     ("pets", "Pets", "Custom pets players can buy"),
+    ("hud", "HUD", "What every player sees on screen"),
     ("restart", "Server Restart", "Warn players before a restart"),
     ("scripting", "Scripting", "Write and run admin scripts"),
     ("discord", "Discord", "Send server events to a Discord channel"),
@@ -156,10 +158,47 @@ TM_CATS = [("all", "All", None), ("light", "Light", ["LightArmor"]), ("medium", 
 TM_LAYOUT = {"head": ("Helmet", "Helmet"), "chest": ("Upperbody", "UpperBody"), "hands": ("Hands", "Hands"),
              "legs": ("Lowerbody", "LowerBody"), "feet": ("Feet", "Feet")}
 
+# Character editor (admin menu, Characters tab). The seven attributes in the game's order --
+# (shown name from /Game/UI/Inventory/Attributes/AttributeDisplayData, the ECharIntStatID entry).
+CE_ATTRS = [("Strength", "AttributeMight"), ("Agility", "AttributeAthleticism"), ("Vitality", "AttributeHealth"),
+            ("Grit", "AttributeStamina"), ("Authority", "AttributeLeadership"),
+            ("Expertise", "AttributeEncumbrance"), ("Survival", "AttributeMetabolism")]
+CE_TABS = [("stats", "Stats"), ("inventory", "Inventory"), ("items", "Item catalog"), ("currency", "Currency"),
+           ("log", "Log")]
+CE_LEVEL = (1, 60)
+CE_POINTS = (0, 99)
+CE_ATTR = (0, 20)
+CE_QTY = (1, 999)
+CE_WALLET_MAX = 999999999
+# Inventories the Inventory tab lists -- (EInventoryType entry, label). A slot is sent as
+# kind * 1000 + slot, kind = the index here.
+CE_INVS = [("Backpack", "Backpack"), ("Equipment", "Equipped"), ("ShortcutBar", "Hotbar")]
+# Item catalog chips -- (key, label, ItemTable GUICategory values; None = all)
+CE_ITEM_CATS = [("all", "All", None), ("weapon", "Weapons", ["Weapon"]),
+                ("armor", "Armor", ["Armor", "LightArmor", "MediumArmor", "HeavyArmor"]),
+                ("resource", "Resources", ["Material", "Component"]), ("consumable", "Consumables", ["Consumable"])]
+# Currencies accepted in trades -- (label, ItemTable id; 0 = the Owl wallet). Saved, no effect yet.
+CE_CURRENCIES = [("Owl wallet", 0), ("Gold Coin", 11066), ("Silver Coin", 11065)]
+# Bug report kinds (the Bug Report board's chips)
+BUG_CATS = ["Interface", "Items", "NPCs", "Loot chests", "Crash", "Other"]
+BUG_TITLE_MAX, BUG_TEXT_MAX = 80, 1000   # characters kept from a report's title / text
+# The HUD tab: (key, label, description, text limit or None). Order is fixed: it's the index into
+# the controller's HudOn, and the text items come first, so their index is also HudText's.
+HUD_ITEMS = [
+    ("alert", "Server alert banner", "The red banner at the top of every player's screen.", 80),
+    ("notice", "Server notice card", "A card on the left, under the health bars.", 120),
+    ("restrict", "Restriction card", "A second card under the notice, for a rule in force.", 120),
+    ("players", "Players online", "A live count of the players on the server, above the hotbar.", None),
+    ("hint", "Player menu hint", "\"Shift+I  Player menu\" above the hotbar, for new players.", None),
+]
+HUD_TEXTS = [k for k, _l, _d, n in HUD_ITEMS if n]
+assert HUD_TEXTS == [k for k, _l, _d, _n in HUD_ITEMS[:len(HUD_TEXTS)]], "HUD text items must come first"
+CE_SELL_Q = (1, 40)   # NPC sell price, in quarters: 0.25x .. 10x
+CE_BUY_Q = (1, 16)    # NPC buy price: 0.25x .. 4x
+
 PANELS = {
     "access": ["Access log"],
     "players": ["Per-player restrictions (build, mute, PvP, ban)"],
-    "characters": ["Character editor (level, points, attributes, religion)"],
     "kits": ["Kit contents editor"],
     "trading": ["Trade log"],
     "restart": ["Restart schedule, player alerts and alert sound"],

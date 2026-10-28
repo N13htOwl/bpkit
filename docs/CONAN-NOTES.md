@@ -436,6 +436,129 @@ How the game shows armor, found on a throwaway Play character:
   `UEDPIE_N` world. Find a widget's world with `get_world()`; its path is under the game
   instance, not the world.
 
+## Editing a character: level, points, attributes, inventory (2026-10-26)
+
+Probed on a throwaway character in Play. These run on the server.
+
+- **Level and XP live in Blueprint, not native.** The native `ProgressionSystem.set_level` does
+  nothing and `get_data()` returns zeros. The real values are variables on the
+  `BP_ProgressionSystem_C` component of `BasePlayerChar_C`: `ExperiencePoints`, `LevelStart`,
+  `LevelEnd`, `AttributePointsTotal`, `AttributePointsDistributed`,
+  `AttributePointsUndistributed`. Python can read them but can't write them ("cannot be edited
+  on instances"). A Blueprint Set node can.
+- **Setting a level** (for any player, unlike the console's `SetLevel`, which acts on the caller):
+  1. `set_int_stat(CharIntStatID.LEVEL, L)`;
+  2. BP `SetLevelRange()`. It sets `LevelStart`/`LevelEnd` from the level, but only clamps XP into
+     the range. Going down, that leaves XP at `LevelEnd`, and the next XP gain levels the
+     character straight back up. So set `ExperiencePoints = LevelStart` afterwards, as the
+     console does;
+  3. points: the console gives a new character `L − 1` (level 1 has 0; each level-up adds 1).
+     `get_attribute_points_earned(L)` returns `L`, so subtract 1.
+     `SetTotalAttributePoints(L − 1)`, then
+     `SetUndistributedAttributePoints(max(0, total − distributed))`.
+  - The console `SetLevel` adds the difference to the current total instead of recomputing it,
+    except that `SetLevel 1` zeroes it. `IncreaseLevel()` is a real level-up: +1 level, +1 point.
+- **Attributes:** `set_int_stat(CharIntStatID.ATTRIBUTE_*, v)` sets one at once (BASE and FULL
+  both follow). It doesn't touch the point counts, so update `AttributePointsDistributed` and
+  `Undistributed` too (`SetDistributedAttributePoints`, `SetUndistributedAttributePoints`).
+  The shown names are in `/Game/UI/Inventory/Attributes/AttributeDisplayData`:
+
+  | Shown | Stat |  | Shown | Stat |
+  |---|---|---|---|---|
+  | Strength | MIGHT |  | Authority | LEADERSHIP |
+  | Agility | ATHLETICISM |  | Expertise | ENCUMBRANCE |
+  | Vitality | HEALTH |  | Survival | METABOLISM |
+  | Grit | STAMINA |  | | |
+
+- **Refund:** BP `ServerResetAttributeAll()` zeroes all 7 attributes (and perks) and gives every
+  point back (Distributed 0, Undistributed = Total). It also recomputes Total as the level
+  (`GetValidAttributePointsNumForCurrentLevel`: 5 at level 5), one more than the console's L − 1. **Reset to level 1:** the set-level
+  sequence with L = 1, then `ServerResetAttributeAll()`.
+- **Inventory:** `ItemInventory.add_item_template(template_id, -1, "OwlAdmin", qty)` adds to the
+  first free slot, or onto a matching stack (returns 0). `delete_items(slot, "OwlAdmin", qty)`
+  takes `qty` off that stack. A `qty` larger than the stack removes all of it. The context is
+  any Name. In `get_item_list()` the list position is the slot number (the list has gaps). The
+  character's inventories are components named `BackpackInventory`, `EquipmentInventory`,
+  `ShortcutBarInventory` (hotbar) and others (recipes, feats, emotes).
+- **ItemTable:** 5821 rows, 5744 with an NSLOCTEXT name. Gold Coin 11066 and Silver Coin 11065
+  (stack 1000), Bronze Coin 11020. `GUICategory` values: Armor, LightArmor, MediumArmor,
+  HeavyArmor, Weapon, Consumable, Material, Component, Decoration, BuildingItem, PetItem,
+  Craftingstations, Tools, Utility, Treasure, Warpaints.
+- **A pasted `0` doesn't stick on a pin whose default isn't 0.** `Add_IntInt`'s B defaults to 1;
+  a node pasted with `B = 0` came back as 1 (a 1000 stuck). Leave such a node out instead.
+- **Tested through the relay (owl-admin `ce_server.py`), 2026-10-26**, single-player Play on the
+  throwaway, admin unlocked by a real login: a locked admin gets nothing back; Apply (level 5,
+  points 4, attributes 1/2/3/0/0/0/1) gave exactly that, with XP at the level's start and Total =
+  spent + unspent; Refund, Reset, Grant (25 Gold Coins, into the backpack), Remove (1 dye) and
+  Wallet all changed the character or the save, and each added its log line to
+  `OwlCe_<net id>.sav`. In Play, `PlayerState.GetPlayerName` is the net id
+  (`NightOwl-…-Context_1`); the list uses `ConanCharacter.GetCharacterName` instead.
+- **Python can't set a BP variable on an instance** unless it is instance-editable ("cannot be
+  edited on instances"), e.g. the controller's `PendingPlayer`. Unlock for tests by logging in.
+- **Deploy crash:** running owl-admin `11_tm_cell.py` in the same deploy call right after
+  `07_player_menu.py` crashed the editor twice (access violation in python311.dll while
+  compiling `WBP_OwlTmCell`). Run alone, 11 builds cleanly. Run the steps one call each.
+- **A starving character dies.** A throwaway left in Play long enough starves (log:
+  `KillCharacterWithRagdoll ... CauseOfDeath: Starvation`), respawns and loses its backpack.
+- **The owl-admin Character Editor (admin menu, Characters tab), tested in Play 2026-10-26** on
+  the throwaway with a real admin login. All five tabs work through the relay events above:
+  - Stats: Apply, Refund and Reset (each confirmed).
+  - Inventory: Backpack, Equipped and Hotbar views; Remove and Grant more (quantity stepper).
+  - Item catalog: categories, search, and grant to the player. The catalogue is 4175 ItemTable
+    rows with a numeric row name and an English NSLOCTEXT name, minus "xx" dev rows.
+  - Currency: the Owl wallet (in `OwlCe_<net id>.sav`), plus the accepted currencies and NPC
+    price quarters (in `OwlEconomy.sav`). Saved, with no effect yet: there is no trading system.
+  - Log: the newest 25 admin changes, newest first.
+- **A grid cell's widget and its variable can't share a name.** A TextBlock "Count" plus a string
+  variable "Count" on the same WBP: the variable isn't writable ("not blueprint writable") and
+  wiring to it fails as "Text Object Reference is not compatible with String".
+- **Rebuilding a WBP that has custom events breaks callers' links.** 03 clears and compiles the
+  menu graph first (or the pasted `OwlCePick` gets renamed), so 12 must run after every 03 build.
+  The same goes for 07, followed by 11.
+- **The admin menu build is slow:** 03 now takes about 18 minutes (~7500 nodes, 2566 widgets).
+  Run it on its own, in the background. Windows shows the editor as "Not Responding" meanwhile;
+  leave it alone.
+- **Restoring game_0.db right after stopping Play can fail.** The editor still holds the file
+  for a second or so: the delete removes the backups but not the live db. Wait until the file
+  can be opened exclusively, and make the hash check count missing files.
+
+## Bug reports, header logo, UMG gotchas (2026-10-27)
+
+Tested in Play on the throwaway character: kind/title checks, send, the server's 60 s wait
+per player, the save (`OwlBugReports.sav`: `Reports` lines + `Done` ints), the admin list
+newest first, Mark done / Reopen. Not testable in Play: a second player (see Multiplayer in PIE).
+
+- **A typed-in default on a const bool pin doesn't stick.** `ParseIntoArray`'s
+  `CullEmptyStrings` is `bIsConst=True`; `typed_input(..., "false", "bool")` came back as
+  `DefaultValue="true"` in the built graph, so empty fields were dropped and every later field
+  shifted by one (seen when `GetServerName` returned "" in Play). Wire a `MakeLiteralBool`
+  into such pins instead (`ce_panel._Ctx.split`). Non-const bool pins (02, 10) are fine.
+- **`GetServerName` returns "" in Play.** The admin row shows "-" for it.
+- **Pasted widgets have no designer GUID.** New widget names from `import_widgets` aren't in
+  the WBP's `WidgetVariableNameToGuidMap`, so the first compile pops an "Ensure condition
+  failed! Widget [X] was added but did not get a GUID" per new widget. They come back on every
+  rebuild (seen for the header's HeaderStack / HeaderGap / BrandLogoBox), so the compiler's own
+  fix-up isn't kept. Editor-only (a cooked game never compiles widgets); not fixed yet.
+- **The first click after switching windows is lost.** Clicking into the editor from another
+  window only activates it; the game never sees that click. Activate first (the editor's
+  title bar), then click. Keys sent while another window is in front go to that window.
+- **HUD tab (tested in Play 2026-10-27):** the values live on the controller (always relevant):
+  replicated `HudOn` / `HudText` / `HudVer`, with class defaults sized to `HUD_ITEMS` so the
+  tick can index them before anything loads. The relay's `OwlServerHudSet` writes them plus the
+  `OwlHud` save; the server loads the save at BeginPlay. Each client's controller tick fills the
+  overlay when `HudVer` passes `HudSeen`. A text part that's on but empty stays hidden. The admin
+  menu widget is **recreated every time it opens**, so its menu variables (the found relay,
+  unsaved edits) start fresh: every tab that calls the relay must look it up itself
+  (`_Ctx.find_relay`). The HUD tab didn't at first, and Save said "Still connecting" unless
+  Characters or Bug Reports had been opened in the same session.
+- **ScaleBox for a banner between other HUD parts:** a stretched canvas slot (left/right insets)
+  holding a `ScaleBox` (ScaleToFit, DownOnly) keeps the banner centred between Conan's vitals and
+  quest panel and shrinks it in narrow windows instead of overlapping.
+- **Textures from a script:** `AssetImportTask` then `set_editor_property` on the
+  `Texture2D` (UI: no mips, `TC_EDITOR_ICON`, `TEXTUREGROUP_UI`, never stream). There is no
+  `post_edit_change` in Python; `set_editor_property` already runs it. A UMG Image brush takes
+  `ResourceObject="/Script/Engine.Texture2D'<path>'"` (13_logo.py, menu_shell.header).
+
 ## Cosmetic mounted rider — the working recipe
 
 Attach + freeze + pose, all content-only and scriptable from Blueprint:
@@ -598,6 +721,15 @@ The real game runs a separate **cook → pak** from the Dev Kit's mod tool, e.g.
     registry + live mount), then immediately delete the surviving `.uasset` ghosts under
     `Content/Mods/<mod>/Content/_Scratch/` on the filesystem — verified gone both sides,
     manager BP unaffected.
+- **Cook in a freshly started Dev Kit (owl-admin's first cook, 2026-10-28).** After a day of
+  builds and Play the editor held 18.5 GB committed; the cook (a second editor process) then
+  died merging the game-wide shader pipeline cache ("Ran out of memory allocating 11556 MiB …
+  The paging file is too small"), after the assets themselves had cooked. Restart the Dev Kit
+  and cook first thing: the same cook then finished in a few minutes. The mod tool's "Choose
+  Assets For Cook" also lists base-asset leftovers (`/Game/_Scratch/...` lives inside the active
+  mod's folder): untick them, or move the `.uasset` files out with the editor closed.
+- **The Dev Kit's mod window keeps its own copy of modinfo.json** (description, change notes,
+  author, preview image) and writes it back; edit those there, not in the file.
 - **Inspect a pak — never trust the cook silently.** UnrealPak =
   `E:\SteamLibrary\steamapps\common\Conan Exiles\CEUE5Devkit\Engine\Binaries\Win64\UnrealPak.exe`.
   `UnrealPak <Mod>.pak -List` shows the outer files; `-Extract <dir>` then
