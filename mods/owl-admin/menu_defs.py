@@ -193,6 +193,21 @@ HUD_ITEMS = [
 ]
 HUD_TEXTS = [k for k, _l, _d, n in HUD_ITEMS if n]
 assert HUD_TEXTS == [k for k, _l, _d, _n in HUD_ITEMS[:len(HUD_TEXTS)]], "HUD text items must come first"
+# The Server Restart tab. Owl Admin only warns: the host's own schedule restarts the server (set
+# it to the same time). Its saved values, one int each, in this order (the controller's RsVals):
+#   0 daily (1/0), 1 the restart time (minutes after midnight, the SERVER's clock),
+#   2..5 the RS_WARNS warnings (1/0 each), 6 the sound (index into RS_SOUNDS)
+RS_WARNS = [10, 5, 2, 1]                  # minutes before the restart
+RS_SOUNDS = [("Horn", "/Game/Sound/Music/misc_elements/Horns/sfx_horn_Cue.sfx_horn_Cue"),
+             ("Bell", "/Game/Sound/SFX/Store/Bazaar_Placeables/bazaar_nem_alarm_bell_ring_Cue."
+                      "bazaar_nem_alarm_bell_ring_Cue"),
+             ("Alarm", "/Game/Sound/Music/The_Purge/sfx_music_purge_warning_cue.sfx_music_purge_warning_cue"),
+             ("Silent", None)]
+RS_LIMITS = [(0, 1), (0, 1439)] + [(0, 1)] * len(RS_WARNS) + [(0, len(RS_SOUNDS) - 1)]
+RS_DEFAULT = [0, 240] + [1] * len(RS_WARNS) + [0]   # off; 4:00 AM; every warning; the horn
+RS_STEP = 15             # minutes per click of the time's - / +
+RS_COUNTDOWN = 600       # seconds: Start restart countdown
+RS_AFTER = 180           # seconds "Restarting now" stays up (the host should have restarted by then)
 CE_SELL_Q = (1, 40)   # NPC sell price, in quarters: 0.25x .. 10x
 CE_BUY_Q = (1, 16)    # NPC buy price: 0.25x .. 4x
 
@@ -201,7 +216,6 @@ PANELS = {
     "players": ["Per-player restrictions (build, mute, PvP, ban)"],
     "kits": ["Kit contents editor"],
     "trading": ["Trade log"],
-    "restart": ["Restart schedule, player alerts and alert sound"],
     "scripting": ["Script editor and console"],
     "discord": ["Discord webhook"],
     "cheats": ["Teleport", "Spawn items"],

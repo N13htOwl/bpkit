@@ -53,6 +53,13 @@ on the server. On every machine with a screen, the tick (while the overlay is up
 overlay's texts and shows each part that is on whenever HudVer passes HudSeen, and keeps the
 players-online count (GameState.PlayerArray) current while that part is on.
 
+Server Restart tab (restart_ctrl): RsVals (menu_defs.RS_LIMITS order) and RsVer replicate; the
+relay's OwlServerRsSet writes them and BeginPlay loads the OwlRestart save into them. Once a
+second the server's tick works out the seconds to the next restart (the daily time on the
+server's clock, or a manual countdown) into the replicated RsLeft (-1 = no banner), and raises
+RsBeep at each warning that is on. Every screen shows the countdown over the alert banner while
+RsLeft >= 0 and plays the chosen sound on each new RsBeep. Owl Admin never restarts the server.
+
 The ModDataTableOperations override (table merges) is step 09.
 
 Run with Play STOPPED, after 01:  python ue_run.py mods/owl-admin/02_controller.py
@@ -65,10 +72,12 @@ import unreal
 import os
 from bpkit import bridge as bp, ir, build, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
-for _m in ("oa_config", "menu_defs"):
+for _m in ("oa_config", "menu_defs", "menu_shell", "ce_panel", "restart_ctrl"):
     sys.modules.pop(_m, None)
 import oa_config as MOD
 import menu_defs as D
+import restart_ctrl
+from ce_panel import _Ctx
 
 assert not unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).is_in_play_in_editor(), \
     "Play-in-Editor is running -- stop Play first"
@@ -129,6 +138,13 @@ for var, vtype, replicated in (("HudOn", ints_t, True), ("HudText", strings_t, T
                                            unreal.BlueprintVariableReplication.NONE)
 HUD_SG_CLS = MOD.full(PKG, MOD.HUD_SAVEGAME) + "_C"
 assert unreal.load_object(None, HUD_SG_CLS), "run 08_savegame.py first: no " + HUD_SG_CLS
+# the Server Restart tab's (restart_ctrl): its values, the countdown, the banner and sound
+for var, vtype, replicated in restart_ctrl.variables(bel):
+    bel.add_member_variable(bp_obj, var, vtype)
+    bel.set_blueprint_variable_replication(bp_obj, var, REPL if replicated else
+                                           unreal.BlueprintVariableReplication.NONE)
+RS_SG_CLS = MOD.full(PKG, MOD.RESTART_SAVEGAME) + "_C"
+assert unreal.load_object(None, RS_SG_CLS), "run 08_savegame.py first: no " + RS_SG_CLS
 print("controller BP:", FULL)
 
 
@@ -174,7 +190,12 @@ g.wire(g.array_var("RelayOwners", pos=(-450, 400), elem_cat="object", elem_sub=i
        "RelayOwners", remember, "TargetArray", exec=False)
 g.wire(each, "Array Element", remember, "NewItem", exec=False)
 g.wire(spawn, "then", remember, "execute")
-g.wire(each, "Completed", bDds, "execute")
+# then the Server Restart countdown (restart_ctrl), once a second
+_rs = _Ctx(g, None, None, None)
+_rs.exits = [(each, "Completed")]
+restart_ctrl.server_tick(_rs, y=-14000)
+for e, ep in _rs.exits:
+    g.wire(e, ep, bDds, "execute")
 g.wire(bTickAuth, "else", bDds, "execute")
 g.wire(dds, "ReturnValue", bDds, "Condition", exec=False)
 
@@ -345,6 +366,14 @@ pset = g.call("SetText", TEXTBLOCK, pos=(x + 600, hy))
 g.wire(part("HudPlayersText", TEXTBLOCK, (x + 400, hy + 300)), "HudPlayersText", pset, "self", exec=False)
 g.wire(ptxt, "ReturnValue", pset, "InText", exec=False)
 g.wire(bp_on, "then", pset, "execute")
+
+# Server Restart (restart_ctrl): the countdown over the alert banner while the overlay is up; the
+# warning sound whether it's up or hidden (a menu open), so nobody misses it
+_rs = _Ctx(g, None, None, None)
+_rs.exits = [(pset, "then"), (bp_on, "else")]
+restart_ctrl.banner(_rs, wcast, WAS, WIDGET_CLS, y=hy + 3000)
+_rs.exits += [(hide, "then")]
+restart_ctrl.sound(_rs, y=hy + 5000)
 
 # Admin mode list, server side (called by the OwlLogin / OwlLogout commands after they set
 # PendingPlayer). AddUnique / RemoveItem on the replicated array; clients get the change.
@@ -610,6 +639,40 @@ g.wire(hinc, "ReturnValue", hver, "HudVer", exec=False)
 for e, ep in ((prev, prev_pin), (bHud, "else"), (hcast, "CastFailed"), (bSizes, "else")):
     g.wire(e, ep, hver, "execute")
 
+# then the Server Restart tab's save into RsVals, if it holds one value per entry (else the
+# defaults stay: no daily restart). RsVer goes up either way, so open admin pages reload.
+y = 5800
+_rs = _Ctx(g, None, None, None)
+_rs.exits = [(hver, "then")]
+rdse = g.call("DoesSaveGameExist", GS, pos=(0, y + 300))
+g.typed_input(rdse, "SlotName", MOD.RESTART_SLOT, "string")
+g.typed_input(rdse, "UserIndex", "0", "int")
+_rs.go(rdse)
+bRs = _rs.branch((rdse, "ReturnValue"), (250, y))
+_rs.exits = [(bRs, "then")]
+rload = g.call("LoadGameFromSlot", GS, pos=(500, y))
+g.typed_input(rload, "SlotName", MOD.RESTART_SLOT, "string")
+g.typed_input(rload, "UserIndex", "0", "int")
+_rs.go(rload)
+rcast = g.cast(RS_SG_CLS, pos=(800, y))
+g.wire(rload, "ReturnValue", rcast, "Object", exec=False)
+_rs.go(rcast)
+RAS = "AsBP Owl Restart Save"
+rvals = g.array_var("Vals", pos=(800, y + 300), elem_cat="int", parent=RS_SG_CLS)
+g.wire(rcast, RAS, rvals, "self", exec=False)
+rlen = g.array_len(rvals, "Vals", (1050, y + 300), elem_cat="int")
+bRsLen = _rs.branch(_rs.fn("EqualEqual_IntInt", KML, {"A": (rlen, "ReturnValue"), "B": (str(len(D.RS_LIMITS)), "int")},
+                           (1300, y + 300)), (1300, y))
+_rs.exits = [(bRsLen, "then")]
+rset = g.var_set("RsVals", "int", pos=(1600, y))
+rset.pin("RsVals").set("PinType.ContainerType", "Array")
+rsrc = g.array_var("Vals", pos=(1400, y + 500), elem_cat="int", parent=RS_SG_CLS)
+g.wire(rcast, RAS, rsrc, "self", exec=False)
+g.wire(rsrc, "Vals", rset, "RsVals", exec=False)
+_rs.go(rset)
+_rs.exits += [(bRs, "else"), (rcast, "CastFailed"), (bRsLen, "else")]
+_rs.bump("RsVer", (1900, y))
+
 # Clear + compile first: a rebuild pastes OwlUnlockPending/OwlLockPending while the compiled class
 # still has functions of those names, and the editor renames the pasted events to "CustomEvent",
 # breaking the commands' calls (seen on the second build, 2026-10-26).
@@ -648,6 +711,7 @@ cdo.set_editor_property("OwlVersion", MOD.VERSION)
 cdo.set_editor_property("HudOn", [0] * len(D.HUD_ITEMS))
 cdo.set_editor_property("HudText", [""] * len(D.HUD_TEXTS))
 cdo.set_editor_property("HudSeen", -1)
+restart_ctrl.defaults(cdo)       # no daily restart; RsLeft / RsBeepSeen / RsClock -1
 cdo.set_editor_property("always_relevant", True)
 tk = cdo.get_editor_property("primary_actor_tick")
 tk.set_editor_property("tick_interval", 0.1)

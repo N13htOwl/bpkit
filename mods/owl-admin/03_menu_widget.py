@@ -11,7 +11,8 @@ Close) | Gate (WidgetSwitcher):
                     Characters page is the character editor (ce_panel.py, with its own action
                     bar), the Bug Reports page lists the players' reports (bug_panel.py) and
                     the HUD page sets what every player sees on screen (hud_panel.py, with its
-                    own Save): the footer below is hidden on all three
+                    own Save) and the Server Restart page schedules the restart warnings
+                    (restart_panel.py, its own Save too): the footer below is hidden on all four
     2  SetupPage -- first-time "set admin password" form, while the server has no password
 | footer (status, Reset, Apply).
 
@@ -48,13 +49,14 @@ import os
 from bpkit import bridge as bp, ir, build, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
 for _m in ("oa_config", "umg_text", "menu_defs", "menu_shell", "ce_panel", "tm_catalog", "ce_catalog", "tm_cell",
-           "bug_panel", "hud_panel"):
+           "bug_panel", "hud_panel", "restart_panel", "restart_ctrl"):
     sys.modules.pop(_m, None)
 import oa_config as MOD
 import menu_defs as D
 import ce_panel
 import bug_panel
 import hud_panel
+import restart_panel
 import ce_catalog
 import tm_cell
 from umg_text import Umg
@@ -159,6 +161,8 @@ def setting_rows(tab):
         items += bug_panel.admin_layout(u, B, R)
     if tab == "hud":
         items += hud_panel.admin_layout(u, B, R)
+    if tab == "restart":
+        items += restart_panel.admin_layout(u, B, R)
     return items
 
 
@@ -226,6 +230,7 @@ assert len(CATALOG) > 1000, "item catalogue looks wrong: %d items" % len(CATALOG
 ce_panel.add_variables(unreal, unreal.BlueprintEditorLibrary, wbp, unreal.load_object(None, RELAY_CLS))
 bug_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
 hud_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
+restart_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
 
 # ================================================================ graph
 GS = "/Script/Engine.GameplayStatics"
@@ -433,9 +438,15 @@ g.wire(on_reports, "ReturnValue", either, "B", exec=False)
 on_hud = g.call("EqualEqual_IntInt", KML, pos=(6700, y0 - 600))
 g.wire(page_idx, "ReturnValue", on_hud, "A", exec=False)
 g.typed_input(on_hud, "B", str([t for t, _ti, _h in D.TABS].index("hud")), "int")
+on_restart = g.call("EqualEqual_IntInt", KML, pos=(6700, y0 - 750))
+g.wire(page_idx, "ReturnValue", on_restart, "A", exec=False)
+g.typed_input(on_restart, "B", str([t for t, _ti, _h in D.TABS].index("restart")), "int")
+own_save = g.call("BooleanOR", KML, pos=(6900, y0 - 700))      # the HUD and Server Restart pages save themselves
+g.wire(on_hud, "ReturnValue", own_save, "A", exec=False)
+g.wire(on_restart, "ReturnValue", own_save, "B", exec=False)
 any_own = g.call("BooleanOR", KML, pos=(6900, y0 - 50))
 g.wire(either, "ReturnValue", any_own, "A", exec=False)
-g.wire(on_hud, "ReturnValue", any_own, "B", exec=False)
+g.wire(own_save, "ReturnValue", any_own, "B", exec=False)
 not_chars = g.call("Not_PreBool", KML, pos=(6700, y0 - 150))
 g.wire(any_own, "ReturnValue", not_chars, "A", exec=False)
 foot_on = g.call("BooleanAND", KML, pos=(6900, y0 - 200))
@@ -458,11 +469,16 @@ _bug = ce_panel._Ctx(g, u, RELAY_CLS, owning_player)
 _bug_exits = bug_panel.admin_tick(_bug, _ce_exits, (has, "ReturnValue"), (on_reports, "ReturnValue"), y=60000)
 # then the HUD page's (it reads the controller found above)
 _hud = ce_panel._Ctx(g, u, RELAY_CLS, owning_player)
-for e, ep in hud_panel.admin_tick(_hud, _bug_exits, (on_hud, "ReturnValue"), (gac, "ReturnValue"), CTRL_CLS, y=90000):
+_hud_exits = hud_panel.admin_tick(_hud, _bug_exits, (on_hud, "ReturnValue"), (gac, "ReturnValue"), CTRL_CLS, y=90000)
+# then the Server Restart page's (the same controller)
+_rs = ce_panel._Ctx(g, u, RELAY_CLS, owning_player)
+for e, ep in restart_panel.admin_tick(_rs, _hud_exits, (on_restart, "ReturnValue"), (gac, "ReturnValue"), CTRL_CLS,
+                                      y=100000):
     g.wire(e, ep, bSync, "execute")
 ce_panel.clicks(g, u, RELAY_CLS, owning_player)
 bug_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 80000)
 hud_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 150000)
+restart_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 160000)
 g.wire(both, "ReturnValue", bSync, "Condition", exec=False)
 
 

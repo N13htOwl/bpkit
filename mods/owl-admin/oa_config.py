@@ -42,6 +42,9 @@ BUG_WAIT = 60.0                       # seconds a player waits between two repor
 # HUD (the admin menu's HUD tab -> every player's WBP_OwlAlerts)
 HUD_SAVEGAME = "BP_OwlHudSave"        # On: 1/0 per menu_defs.HUD_ITEMS; Text: one per text item
 HUD_SLOT = "OwlHud"
+# Server Restart (the admin menu's Server Restart tab -> every player's alert banner + sound)
+RESTART_SAVEGAME = "BP_OwlRestartSave"   # Vals: one int per menu_defs.RS_LIMITS entry
+RESTART_SLOT = "OwlRestart"
 
 # Conan's server settings actor (a BP subclass of ServerSettings): the menu's LIVE settings
 # (menu_defs.LIVE) are pushed into it -- native ones via SetServerSetting, which also writes

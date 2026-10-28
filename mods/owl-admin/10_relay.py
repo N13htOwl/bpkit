@@ -44,6 +44,9 @@ The HUD tab (03): OwlServerHudSet / OwlClientHudSaved and their Hud* / SvHud* va
 from hud_server.py. It writes the controller's (02) replicated HudOn / HudText / HudVer, so 02
 must have them: build 02 before this.
 
+The Server Restart tab (03): OwlServerRsSet / OwlServerRsCount / OwlClientRsSaved and their
+Rs* / SvRs* variables come from restart_server.py; they write the controller's Rs* (02 again).
+
 Run with Play STOPPED, after 02 (which creates the empty asset so it can spawn it) and 08:
     python ue_run.py mods/owl-admin/10_relay.py
 """
@@ -56,7 +59,7 @@ import unreal
 import os
 from bpkit import bridge as bp, ir, build, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
-for _m in ("oa_config", "oa_auth", "menu_defs", "ce_server", "bug_server", "hud_server"):
+for _m in ("oa_config", "oa_auth", "menu_defs", "ce_server", "bug_server", "hud_server", "restart_server"):
     sys.modules.pop(_m, None)
 import types
 import oa_config as MOD
@@ -64,6 +67,7 @@ import menu_defs as D
 import ce_server
 import bug_server
 import hud_server
+import restart_server
 from oa_auth import Auth
 
 assert not unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).is_in_play_in_editor(), \
@@ -92,10 +96,13 @@ EVENTS = {"OwlServerLogin": RUN_ON_SERVER, "OwlServerSetPassword": RUN_ON_SERVER
 
 TM_SG_CLS = MOD.full(PKG, MOD.TM_SAVEGAME) + "_C"
 for c in (TM_SG_CLS, MOD.full(PKG, MOD.CE_SAVEGAME) + "_C", MOD.full(PKG, MOD.ECON_SAVEGAME) + "_C",
-          MOD.full(PKG, MOD.BUG_SAVEGAME) + "_C", MOD.full(PKG, MOD.HUD_SAVEGAME) + "_C"):
+          MOD.full(PKG, MOD.BUG_SAVEGAME) + "_C", MOD.full(PKG, MOD.HUD_SAVEGAME) + "_C",
+          MOD.full(PKG, MOD.RESTART_SAVEGAME) + "_C"):
     assert unreal.load_object(None, c), "build 08 first: no " + c
 assert unreal.get_default_object(unreal.load_object(None, CTRL_CLS)).get_editor_property("HudVer") is not None, \
     "rebuild 02 first: the controller has no HudVer"
+assert unreal.get_default_object(unreal.load_object(None, CTRL_CLS)).get_editor_property("RsVer") is not None, \
+    "rebuild 02 first: the controller has no RsVer"
 
 bel = unreal.BlueprintEditorLibrary
 bp_obj, _ = bp.scratch_blueprint(pkg=PKG, name=MOD.RELAY, parent=unreal.Actor)
@@ -119,6 +126,8 @@ CE_VARS = ce_server.variables(unreal, bel, unreal.load_object(None, MOD.full(PKG
 CE_VARS += bug_server.variables(unreal, bel, unreal.load_object(None, MOD.full(PKG, MOD.BUG_SAVEGAME) + "_C"))
 # the HUD tab (hud_server)
 CE_VARS += hud_server.variables(unreal, bel)
+# the Server Restart tab (restart_server)
+CE_VARS += restart_server.variables(unreal, bel)
 for var, vtype in CE_VARS:
     bel.add_member_variable(bp_obj, var, vtype)
     bel.set_blueprint_variable_replication(bp_obj, var, REPL.NONE)
@@ -665,6 +674,11 @@ EVENTS.update(hud_server.build(types.SimpleNamespace(
     g=g, self_call=self_call, owner_pc=owner_pc, save_slot=save_slot, Auth=Auth, MOD=MOD, PKG=PKG,
     CTRL_CLS=CTRL_CLS, SG_CLS=SG_CLS, RUN_ON_SERVER=RUN_ON_SERVER, RUN_ON_OWNING_CLIENT=RUN_ON_OWNING_CLIENT),
     y0=60000))
+# ---------------------------------------------------------------- the Server Restart tab (admin menu 03)
+EVENTS.update(restart_server.build(types.SimpleNamespace(
+    g=g, self_call=self_call, owner_pc=owner_pc, save_slot=save_slot, Auth=Auth, MOD=MOD, PKG=PKG,
+    CTRL_CLS=CTRL_CLS, SG_CLS=SG_CLS, RUN_ON_SERVER=RUN_ON_SERVER, RUN_ON_OWNING_CLIENT=RUN_ON_OWNING_CLIENT),
+    y0=66000))
 
 # Clear + compile first, or a rebuild renames the pasted events (see 02)
 bel.compile_blueprint(bp_obj)

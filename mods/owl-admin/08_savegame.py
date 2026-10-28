@@ -16,6 +16,8 @@
                                                 oldest first (capped at BUG_MAX); Done: 1/0 each
     BP_OwlHudSave      (slot OwlHud)            On: 1/0 per menu_defs.HUD_ITEMS; Text: one string
                                                 per text item (menu_defs.HUD_TEXTS)
+    BP_OwlRestartSave  (slot OwlRestart)        Vals: the Server Restart tab, one int per
+                                                menu_defs.RS_LIMITS entry (daily, time, warnings, sound)
 
 Password: written by `dc OwlSetPassword <password>` (Conan admins only) and read by
 `dc OwlLogin`. Settings: written by `dc OwlApply ...` (the menu's APPLY) and read by the
@@ -54,7 +56,8 @@ for name, variables in ((MOD.SAVEGAME, [("Password", string_t, "")]),
                         (MOD.ECON_SAVEGAME, [("CurOn", bel.get_array_type(int_t), []), ("SellQ", int_t, 0),
                                              ("BuyQ", int_t, 0)]),
                         (MOD.BUG_SAVEGAME, [("Reports", strings_t, []), ("Done", bel.get_array_type(int_t), [])]),
-                        (MOD.HUD_SAVEGAME, [("On", bel.get_array_type(int_t), []), ("Text", strings_t, [])])):
+                        (MOD.HUD_SAVEGAME, [("On", bel.get_array_type(int_t), []), ("Text", strings_t, [])]),
+                        (MOD.RESTART_SAVEGAME, [("Vals", bel.get_array_type(int_t), [])])):
     bp_obj, _ = bp.scratch_blueprint(pkg=PKG, name=name, parent=unreal.SaveGame)
     for var, vtype, _empty in variables:
         bel.add_member_variable(bp_obj, var, vtype)                    # no-op if present
