@@ -208,6 +208,18 @@ RS_DEFAULT = [0, 240] + [1] * len(RS_WARNS) + [0]   # off; 4:00 AM; every warnin
 RS_STEP = 15             # minutes per click of the time's - / +
 RS_COUNTDOWN = 600       # seconds: Start restart countdown
 RS_AFTER = 180           # seconds "Restarting now" stays up (the host should have restarted by then)
+# The Pet Shop (player menu): (name, ItemTable id of the grown, tamed pet, price in Owl wallet coins,
+# its icon). Buying puts the pet item in the backpack; the player places it like any tamed pet.
+# Every id is a ThrallItem with a SpawnTemplateID and the Item.Pet.Grownup tag (checked 2026-10-28).
+_PI = "/Game/UI/Textures/Icons/"
+PETS = [("Feral Dog", 19184, 500, _PI + "Items/icon_wilddog_01.icon_wilddog_01"),
+        ("Wolf", 19145, 1500, _PI + "Pets/icon_pet_Wolf.icon_pet_Wolf"),
+        ("Panther", 19149, 1500, _PI + "Pets/icon_pet_Panther.icon_pet_Panther"),
+        ("Jaguar", 19146, 2000, _PI + "Pets/icon_pet_Jaguar.icon_pet_Jaguar"),
+        ("Lion", 19097, 2500, _PI + "Items/icon_lion.icon_lion"),
+        ("Tiger", 19147, 3500, _PI + "Pets/icon_pet_Tiger.icon_pet_Tiger"),
+        ("Greater Wolf", 19126, 4000, _PI + "Pets/icon_pet_Wolf_Alpha.icon_pet_Wolf_Alpha"),
+        ("Greater Bear", 19127, 6000, _PI + "Pets/icon_pet_Bear_Alpha.icon_pet_Bear_Alpha")]
 CE_SELL_Q = (1, 40)   # NPC sell price, in quarters: 0.25x .. 10x
 CE_BUY_Q = (1, 16)    # NPC buy price: 0.25x .. 4x
 

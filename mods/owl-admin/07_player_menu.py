@@ -27,6 +27,9 @@ Graph:
 Bug Report tab (the Bug Report board): bug_panel.py -- kind, title, text and the details sent with
 it; Send report -> MyRelay.OwlServerBugReport; the server's answer (BugSentVer) shows the sent page.
 
+Pet Shop tab (the Pet Shop board): pet_panel.py -- eight pets bought with the Owl wallet
+(MyRelay.OwlServerPetBuy, pet_server); the pet item lands in the backpack.
+
 The other tabs are placeholder cards; the boards get built out one at a time.
 Parent class WindowRoot + the OwlPlayerMenu row (06) make it a GUIModule like the admin menu.
 
@@ -40,7 +43,7 @@ import unreal
 import os
 from bpkit import bridge as bp, ir, build, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
-for _m in ("oa_config", "umg_text", "menu_defs", "menu_shell", "tm_catalog", "tm_cell", "ce_panel", "bug_panel"):
+for _m in ("oa_config", "umg_text", "menu_defs", "menu_shell", "tm_catalog", "tm_cell", "ce_panel", "bug_panel", "pet_panel"):
     sys.modules.pop(_m, None)
 import oa_config as MOD
 import menu_defs as D
@@ -48,6 +51,7 @@ import tm_catalog
 import tm_cell
 import ce_panel
 import bug_panel
+import pet_panel
 from umg_text import Umg
 from menu_shell import Shell, button, button_style, framed, clicked, scroll_style
 
@@ -70,7 +74,7 @@ N_OUT = MOD.TM_MAX_OUTFITS
 u = Umg(MOD.BOARD_SCALE)
 B, R = MOD.FONT_BOLD, MOD.FONT_REGULAR
 s = Shell(u, "PLAYER MENU · PRIVATE REALM", D.PLAYER_TABS, MOD.PLAYER_MODULE, (B, R),
-          badge="PLAYER", status="Transmog and Bug Report are ready. The other tabs are coming in later steps.")
+          badge="PLAYER", status="Transmog, Pet Shop and Bug Report are ready. The other tabs are coming in later steps.")
 s.header(logo=MOD.full(PKG, MOD.LOGO_TEX))
 s.sidebar()
 
@@ -200,6 +204,8 @@ def tm_page():
 def page(tab):
     if tab == "transmog":
         return tm_page()
+    if tab == "pets":
+        return pet_panel.player_layout(u, B, R)
     if tab == "bugreport":
         return bug_panel.player_layout(u, B, R)
     title = dict((t, ti) for t, ti, _h in D.PLAYER_TABS)[tab]
@@ -222,6 +228,7 @@ for var, vt in (("TmIds", bel.get_array_type(T("string"))), ("TmNames", bel.get_
                 ("MyRelay", bel.get_object_reference_type(unreal.load_object(None, RELAY_CLS)))):
     bel.add_member_variable(wbp, var, vt)
 bug_panel.player_variables(unreal, bel, wbp)
+pet_panel.player_variables(unreal, bel, wbp)
 bel.compile_blueprint(wbp)
 
 # ================================================================ graph
@@ -741,8 +748,11 @@ for e, ep in entries:
 _bug = ce_panel._Ctx(g, u, RELAY_CLS, lambda pos: g.call("GetOwningPlayer", UW, pos=pos), relay_var="MyRelay")
 _bug.exits = [(undirty, "then"), (bDirty, "else")]
 bug_panel.player_tick(_bug, 40000)
+pet_panel.player_tick(_bug, 45000)            # then the Pet Shop tab's
 bug_panel.player_clicks(ce_panel._Ctx(g, u, RELAY_CLS, lambda pos: g.call("GetOwningPlayer", UW, pos=pos),
                                       relay_var="MyRelay"), 50000)
+pet_panel.player_clicks(ce_panel._Ctx(g, u, RELAY_CLS, lambda pos: g.call("GetOwningPlayer", UW, pos=pos),
+                                      relay_var="MyRelay"), 60000)
 
 # Clear + compile first, or a rebuild renames the pasted OwlTmPick event (see 02); 11 then
 # rebuilds the cell, whose call to it went stale
@@ -768,6 +778,7 @@ cdo.set_editor_property("TmCats", [e["cat"] for e in CATALOG])
 cdo.set_editor_property("TmPick", [""] * N_SLOTS)
 cdo.set_editor_property("TmDirty", True)
 bug_panel.bake_player(cdo)
+pet_panel.bake_player(cdo)
 assert len(cdo.get_editor_property("TmIds")) == len(CATALOG), "catalogue not stored on the CDO"
 assert bp.root_widget(wbp_ptr) == s.root_ptr, "root changed during compile"
 assert eal.save_asset(PATH), "save failed"

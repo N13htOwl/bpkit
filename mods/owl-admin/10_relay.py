@@ -47,6 +47,9 @@ must have them: build 02 before this.
 The Server Restart tab (03): OwlServerRsSet / OwlServerRsCount / OwlClientRsSaved and their
 Rs* / SvRs* variables come from restart_server.py; they write the controller's Rs* (02 again).
 
+The Pet Shop (07): OwlServerPetWallet / OwlServerPetBuy / OwlClientPet and their Pet* / SvPet*
+variables come from pet_server.py; the prices (PetIds / PetPrices / PetNames) are class defaults.
+
 Run with Play STOPPED, after 02 (which creates the empty asset so it can spawn it) and 08:
     python ue_run.py mods/owl-admin/10_relay.py
 """
@@ -59,7 +62,7 @@ import unreal
 import os
 from bpkit import bridge as bp, ir, build, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
-for _m in ("oa_config", "oa_auth", "menu_defs", "ce_server", "bug_server", "hud_server", "restart_server"):
+for _m in ("oa_config", "oa_auth", "menu_defs", "ce_server", "bug_server", "hud_server", "restart_server", "pet_server"):
     sys.modules.pop(_m, None)
 import types
 import oa_config as MOD
@@ -68,6 +71,7 @@ import ce_server
 import bug_server
 import hud_server
 import restart_server
+import pet_server
 from oa_auth import Auth
 
 assert not unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).is_in_play_in_editor(), \
@@ -128,6 +132,8 @@ CE_VARS += bug_server.variables(unreal, bel, unreal.load_object(None, MOD.full(P
 CE_VARS += hud_server.variables(unreal, bel)
 # the Server Restart tab (restart_server)
 CE_VARS += restart_server.variables(unreal, bel)
+# the Pet Shop (pet_server): the player's wallet + buy answer, and the prices on the class defaults
+CE_VARS += pet_server.variables(unreal, bel, unreal.load_object(None, MOD.full(PKG, MOD.CE_SAVEGAME) + "_C"))
 for var, vtype in CE_VARS:
     bel.add_member_variable(bp_obj, var, vtype)
     bel.set_blueprint_variable_replication(bp_obj, var, REPL.NONE)
@@ -679,6 +685,11 @@ EVENTS.update(restart_server.build(types.SimpleNamespace(
     g=g, self_call=self_call, owner_pc=owner_pc, save_slot=save_slot, Auth=Auth, MOD=MOD, PKG=PKG,
     CTRL_CLS=CTRL_CLS, SG_CLS=SG_CLS, RUN_ON_SERVER=RUN_ON_SERVER, RUN_ON_OWNING_CLIENT=RUN_ON_OWNING_CLIENT),
     y0=66000))
+# ---------------------------------------------------------------- the Pet Shop (player menu 07)
+EVENTS.update(pet_server.build(types.SimpleNamespace(
+    g=g, self_call=self_call, owner_pc=owner_pc, save_slot=save_slot, Auth=Auth, MOD=MOD, PKG=PKG,
+    CTRL_CLS=CTRL_CLS, SG_CLS=SG_CLS, RUN_ON_SERVER=RUN_ON_SERVER, RUN_ON_OWNING_CLIENT=RUN_ON_OWNING_CLIENT),
+    y0=72000))
 
 # Clear + compile first, or a rebuild renames the pasted events (see 02)
 bel.compile_blueprint(bp_obj)
@@ -721,6 +732,7 @@ cdo = unreal.get_default_object(gen)
 for var in ("TmLook", "TmPawn", "TmOutfitNames", "TmOutfitLooks", "TmClientVer", "TmApplied", "TmOn", "TmAsked") + \
         tuple(v for v, _t in CE_VARS):
     cdo.get_editor_property(var)                               # raises if remove_unused_variables took it
+pet_server.defaults(cdo)                                     # what each pet costs: server side only
 cdo.set_editor_property("replicates", True)
 cdo.set_editor_property("only_relevant_to_owner", False)     # everyone sees everyone's look
 cdo.set_editor_property("always_relevant", True)
