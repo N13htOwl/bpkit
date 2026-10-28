@@ -21,7 +21,7 @@ KTXT = "/Script/Engine.KismetTextLibrary"
 CPC = "/Script/ConanSandbox.ConanPlayerController"
 PSTATE = "/Script/Engine.PlayerState"
 TITLE = "Owl Admin"
-NO_PASSWORD = "No Owl Admin password is set yet. Open the admin menu (Shift+U) to set one."
+NO_PASSWORD = "No Owl Admin password is set yet. Open the admin menu (Shift+O) to set one."
 
 
 class Auth:
@@ -125,7 +125,7 @@ class Auth:
         g.wire(eq, "ReturnValue", bOk, "Condition", exec=False)
         self.message(bOk, "else", "Wrong password.", (x + 1400, y + 600))
         done = self.set_pending_and_call(bOk, "then", "OwlUnlockPending", (x + 1400, y))
-        self.message(done, "then", "Admin mode unlocked. Press Shift+U to open the admin menu.", (x + 2400, y))
+        self.message(done, "then", "Admin mode unlocked. Press Shift+O to open the admin menu.", (x + 2400, y))
 
     def store_password(self, prev, prev_pin, pw, pos):
         """Save pw as the password, tell every client a password exists (admin menus leave the

@@ -71,7 +71,8 @@ CUSTOM_CMD_TABLE = "/Game/Systems/Cheats/CustomConsoleCommandsDataTable"  # game
 # left from right).
 MENU_MODULE = "OwlAdminMenu"          # module name: GUIModuleController.ToggleModule(MENU_MODULE)
 PLAYER_MODULE = "OwlPlayerMenu"
-ACTIONS = [("OwlAdminToggle", "U"), ("OwlPlayerToggle", "I")]   # (action, key), both with Shift
+ACTIONS = [("OwlAdminToggle", "O"), ("OwlPlayerToggle", "I")]   # (action, key), both with Shift. Not U:
+                                                                # Tot ! Enhanced Sudo's admin panel is Shift+U
 UI_MODULE_TABLE = "DT_OwlAdmin_UIModules"   # UIModuleTableRow table, one row per menu
 GAME_UI_MODULE_TABLE = "/Game/UI/Data/DataTables/DT_UIModuleTable"   # game table we merge into
 

@@ -12,7 +12,7 @@ TABS = [
     ("building", "Building", "Limits on structures, clans and decay"),
     ("combat", "Combat", "PvP rules and raid protection"),
     ("loot", "Items & Loot", "Chest behaviour and item restrictions"),
-    ("players", "Players", "Per-player restrictions"),
+    ("players", "Players", "Teleport to players, and ban or unban them"),
     ("characters", "Characters", "Fix levels, stats and points"),
     ("commands", "Commands", "Player chat commands and cooldowns"),
     ("kits", "Kits", "Item bundles players can claim with /kits"),
@@ -108,6 +108,8 @@ SETTINGS = [
     T("kit3on", "kits", "Kit 3", "Available to claim. Name and items are set below.", False),
     N("kit3cd", "kits", "Kit 3 cooldown", "Minutes before the same player can claim Kit 3 again.", 0, 10080, 60, "m", 10080),
     N("stack", "loot", "Stack size multiplier", "Scales how many of an item fit in one slot.", 1, 10, 1, "x", 2),
+    # added after v1.3: keep new settings at the end (a saved settings list is read by position)
+    T("owltm", "loot", "Owl Transmog and Animal Masks", "Shows the looks players pick in the player menu. Turn off when 'Tot ! Custom' or another mod handles armor looks: saved looks are kept and come back when you turn it on.", True),
 ]
 
 # Settings Conan itself can change, so APPLY puts them into effect at once. id -> (server
@@ -140,7 +142,7 @@ PLAYER_TABS = [
     ("transmog", "Transmog Outfits", "Change how your gear looks"),
     ("pets", "Pet Shop", "Buy companion pets with coins"),
     ("masks", "Animal Masks", "Wear an animal mask"),
-    ("equipment", "Equipment & Owl Mask", "Your gear and the Owl Mask"),
+    ("equipment", "Equipment", "Your gear and armor"),
     ("bugreport", "Bug Report", "Tell the admins about a problem"),
 ]
 
@@ -238,7 +240,6 @@ CE_BUY_Q = (1, 16)    # NPC buy price: 0.25x .. 4x
 
 PANELS = {
     "access": ["Access log"],
-    "players": ["Per-player restrictions (build, mute, PvP, ban)"],
     "kits": ["Kit contents editor"],
     "trading": ["Trade log"],
     "scripting": ["Script editor and console"],

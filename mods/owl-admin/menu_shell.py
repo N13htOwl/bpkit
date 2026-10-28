@@ -3,7 +3,7 @@ Menu board: header (brand, badge, extra buttons, Close), a sidebar of tab button
 WidgetSwitcher of pages, a footer, and the matching graph (tab clicks, Close, active-tab
 highlight). Each menu supplies its own page content.
 
-    s = Shell(u, "PLAYER MENU · PRIVATE REALM", tabs, module="OwlPlayerMenu", ...)
+    s = Shell(u, "PLAYER MENU", tabs, module="OwlPlayerMenu", ...)
     s.header(); s.sidebar(); s.pages(lambda tab: [(widget, [slot props]), ...]); s.footer()
     s.root("Body")                          # or a widget that wraps Body (the admin login gate)
     wbp, wbp_ptr = s.paste(eal, bp, pkg, name, full)
@@ -68,17 +68,12 @@ class Shell:
     def header(self, extra=(), logo=None):
         """extra: [(button name, label)] shown left of Close (e.g. the admin Lock button).
         logo: a Texture2D object path ('/Game/.../T.T') shown in the top-left corner. The brand
-        (title, BETA, subtitle) is centred over the whole header in an Overlay, so the logo on
+        (title, subtitle under it) is centred over the whole header in an Overlay, so the logo on
         the left and the buttons on the right don't push it off centre."""
         u, B = self.u, self.B
         u.text("BrandTitle", "OWL ADMIN", B, 28, "#ffffff", spacing_px=4)
-        u.text("BetaText", "BETA", B, 15, "#ffffff", spacing_px=3)
-        u.border("BetaBadge", "#b3121a", 1.0, u.margin(10, 3, 10, 3), "BetaText")
-        u.box("HorizontalBox", "BrandRow", [("BrandTitle", ["VerticalAlignment=VAlign_Center"]),
-                                            ("BetaBadge", ["Padding=%s" % u.margin(l=12),
-                                                           "VerticalAlignment=VAlign_Center"])])
         u.text("BrandSub", self.subtitle, B, 15, "#f0343a", spacing_px=3)
-        u.box("VerticalBox", "Brand", [("BrandRow", ["HorizontalAlignment=HAlign_Center"]),
+        u.box("VerticalBox", "Brand", [("BrandTitle", ["HorizontalAlignment=HAlign_Center"]),
                                        ("BrandSub", ["Padding=%s" % u.margin(t=2), "HorizontalAlignment=HAlign_Center"])])
         u.text("BadgeText", self.badge, B, 18, "#f2e6e2", spacing_px=1)
         framed(u, "Badge", "#5a1a1e", "#150909", "BadgeText", u.margin(16, 8, 16, 8))

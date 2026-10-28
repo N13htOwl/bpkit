@@ -10,7 +10,7 @@ the Inventory tab can name what a player carries, with no data-table reads at ru
 """
 import json
 
-from tm_catalog import ITEM_TABLE, _NSLOC, _DEV_ICON
+from tm_catalog import ITEM_TABLE, _NSLOC, item_icon
 
 
 def catalog(unreal):
@@ -34,8 +34,6 @@ def catalog(unreal):
         name = m.group(1).replace('\\"', '"').strip() if m else ""
         if not name or name.lower().startswith("xx"):
             continue
-        icon = str(r.get("Icon") or "")
-        if icon == "None" or _DEV_ICON in icon:
-            icon = ""
-        entries.append({"id": int(rid), "cat": cat_of.get(str(r.get("GUICategory")), -1), "name": name, "icon": icon})
+        entries.append({"id": int(rid), "cat": cat_of.get(str(r.get("GUICategory")), -1), "name": name,
+                        "icon": item_icon(r)})
     return sorted(entries, key=lambda e: (e["name"].lower(), e["id"]))

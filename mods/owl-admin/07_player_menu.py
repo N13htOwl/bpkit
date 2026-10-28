@@ -33,7 +33,10 @@ Pet Shop tab (the Pet Shop board): pet_panel.py -- eight pets bought with the Ow
 Animal Masks tab (the Masks board): mask_panel.py -- nine animal-like game head pieces; Wear /
 Take off sets TmPick[0] and sends the look with MyRelay.OwlServerTmApply (looks only).
 
-The other tabs are placeholder cards; the boards get built out one at a time.
+Equipment tab: gear_panel.py -- what the player really wears per slot (read from the
+character's CharacterLayout), with the item table's armor; read only.
+
+All the player tabs are built.
 Parent class WindowRoot + the OwlPlayerMenu row (06) make it a GUIModule like the admin menu.
 
 Run with Play STOPPED, after 10:  python ue_run.py mods/owl-admin/07_player_menu.py
@@ -46,7 +49,7 @@ import unreal
 import os
 from bpkit import bridge as bp, ir, build, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
-for _m in ("oa_config", "umg_text", "menu_defs", "menu_shell", "tm_catalog", "tm_cell", "ce_panel", "bug_panel", "pet_panel", "mask_panel"):
+for _m in ("oa_config", "umg_text", "menu_defs", "menu_shell", "tm_catalog", "tm_cell", "ce_panel", "bug_panel", "pet_panel", "mask_panel", "gear_panel"):
     sys.modules.pop(_m, None)
 import oa_config as MOD
 import menu_defs as D
@@ -56,6 +59,7 @@ import ce_panel
 import bug_panel
 import pet_panel
 import mask_panel
+import gear_panel
 from umg_text import Umg
 from menu_shell import Shell, button, button_style, framed, clicked, scroll_style
 
@@ -72,13 +76,14 @@ CELL_CLS = CELL_FULL + "_C"
 assert unreal.load_object(None, RELAY_CLS), "build 10 first: no " + RELAY_CLS
 tm_cell.ensure(unreal, eal, bp, PKG, CELL_FULL)
 CATALOG = tm_catalog.catalog(unreal)
+GEAR = gear_panel.catalog(unreal)
 N_SLOTS = len(D.TM_SLOTS)
 N_OUT = MOD.TM_MAX_OUTFITS
 
 u = Umg(MOD.BOARD_SCALE)
 B, R = MOD.FONT_BOLD, MOD.FONT_REGULAR
-s = Shell(u, "PLAYER MENU · PRIVATE REALM", D.PLAYER_TABS, MOD.PLAYER_MODULE, (B, R),
-          badge="PLAYER", status="Transmog, Pet Shop, Animal Masks and Bug Report are ready. Equipment is coming in a later step.")
+s = Shell(u, "PLAYER MENU", D.PLAYER_TABS, MOD.PLAYER_MODULE, (B, R),
+          badge="PLAYER", status="Transmog, Pet Shop, Animal Masks, Equipment and Bug Report are ready.")
 s.header(logo=MOD.full(PKG, MOD.LOGO_TEX))
 s.sidebar()
 
@@ -201,15 +206,28 @@ def tm_page():
 
     u.box("HorizontalBox", "TmBody", [(preview, ["VerticalAlignment=VAlign_Fill"]),
                                       (looks, ["Size=(SizeRule=Fill)", "VerticalAlignment=VAlign_Fill"]),
-                                      (outfits, ["VerticalAlignment=VAlign_Fill"])])
+                                      (outfits, ["VerticalAlignment=VAlign_Fill"])], variable=True)
     return [("TmBody", [])]
+
+
+LOOKS_OFF = "An admin has turned off Owl Transmog and Animal Masks on this server. Your saved looks are kept."
+
+
+def looks_off_note(name):
+    """The card shown instead of a looks page while the admins have Owl looks off (LooksOn)."""
+    u.text(name + "Text", LOOKS_OFF, B, 18, "#f2e6e2", wrap=True, variable=False)
+    u.border(name, "#2a0b0d", 1.0, u.margin(20, 16, 20, 16), name + "Text", props=["Visibility=Collapsed"],
+             variable=True)
+    return (name, ["Padding=%s" % u.margin(b=10)])
 
 
 def page(tab):
     if tab == "transmog":
-        return tm_page()
+        return [looks_off_note("TmOffNote")] + tm_page()
     if tab == "masks":
-        return mask_panel.player_layout(u, B, R)
+        return [looks_off_note("MaskOffNote")] + mask_panel.player_layout(u, B, R)
+    if tab == "equipment":
+        return gear_panel.player_layout(u, B, R)
     if tab == "pets":
         return pet_panel.player_layout(u, B, R)
     if tab == "bugreport":
@@ -236,6 +254,7 @@ for var, vt in (("TmIds", bel.get_array_type(T("string"))), ("TmNames", bel.get_
 bug_panel.player_variables(unreal, bel, wbp)
 pet_panel.player_variables(unreal, bel, wbp)
 mask_panel.player_variables(unreal, bel, wbp)
+gear_panel.player_variables(unreal, bel, wbp)
 bel.compile_blueprint(wbp)
 
 # ================================================================ graph
@@ -757,6 +776,26 @@ _bug.exits = [(undirty, "then"), (bDirty, "else")]
 bug_panel.player_tick(_bug, 40000)
 pet_panel.player_tick(_bug, 45000)            # then the Pet Shop tab's
 mask_panel.player_tick(_bug, 48000)           # then the Animal Masks tab's
+gear_panel.player_tick(_bug, 75000)           # then the Equipment tab's
+# then: the admins turned Owl looks off (the controller's LooksOn) -> the Transmog and Animal Masks
+# pages show a note instead of their content (a controller not here yet counts as on)
+CTRL_CLS = MOD.full(PKG, MOD.CONTROLLER) + "_C"
+_lg = g.call("GetActorOfClass", GS, pos=(0, 80000))
+_ap = _lg.pin("ActorClass").typed("class", ir.obj_path("/Script/Engine.Actor"), direction="EGPD_Input")
+_ap.set("PinType.bIsUObjectWrapper", "True")
+_ap.set("DefaultObject", '"%s"' % CTRL_CLS)
+_lg.pin("ReturnValue").typed("object", ir.obj_path(CTRL_CLS), direction="EGPD_Output")
+_bug.go(_lg)
+_bc = _bug.branch(_bug.fn("IsValid", KSL, {"Object": (_lg, "ReturnValue")}, (300, 80300)), (300, 80000))
+_no_ctl = [(_bc, "else")]
+_bug.exits = [(_bc, "then")]
+_lon = g.var_get("LooksOn", "bool", parent=CTRL_CLS, pos=(500, 80400))
+g.wire(_lg, "ReturnValue", _lon, "self", exec=False)
+_bug.vis_if((_lon, "LooksOn"), [("TmBody", "/Script/UMG.HorizontalBox"), ("MaskBody", "/Script/UMG.HorizontalBox")],
+            (700, 80000))
+_bug.vis_if(_bug.fn("Not_PreBool", KML, {"A": (_lon, "LooksOn")}, (1500, 80400)),
+            [("TmOffNote", "/Script/UMG.Border"), ("MaskOffNote", "/Script/UMG.Border")], (1700, 80000))
+_bug.exits += _no_ctl
 bug_panel.player_clicks(ce_panel._Ctx(g, u, RELAY_CLS, lambda pos: g.call("GetOwningPlayer", UW, pos=pos),
                                       relay_var="MyRelay"), 50000)
 pet_panel.player_clicks(ce_panel._Ctx(g, u, RELAY_CLS, lambda pos: g.call("GetOwningPlayer", UW, pos=pos),
@@ -790,6 +829,7 @@ cdo.set_editor_property("TmDirty", True)
 bug_panel.bake_player(cdo)
 pet_panel.bake_player(cdo)
 mask_panel.bake_player(cdo)
+gear_panel.bake_player(cdo, GEAR)
 assert len(cdo.get_editor_property("TmIds")) == len(CATALOG), "catalogue not stored on the CDO"
 assert bp.root_widget(wbp_ptr) == s.root_ptr, "root changed during compile"
 assert eal.save_asset(PATH), "save failed"

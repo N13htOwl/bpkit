@@ -1,6 +1,6 @@
 """owl-admin step 06: DT_OwlAdmin_UIModules -- the UIModuleTableRow table that 09's
 ModDataTableOperations override merges into the game's DT_UIModuleTable, registering both
-menus as GUIModules: OwlAdminMenu (03, Shift+U) and OwlPlayerMenu (07, Shift+I).
+menus as GUIModules: OwlAdminMenu (03, Shift+O) and OwlPlayerMenu (07, Shift+I).
 
 Keys: each row's ToggleActionName names an input action that 09 registers at mod init
 (oa_config.ACTIONS). Conan's GUIModuleController binds module toggles by action name -- the

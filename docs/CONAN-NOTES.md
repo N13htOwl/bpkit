@@ -907,3 +907,28 @@ Unreal's reflection already has every signature — read it instead:
   node lists typed param pins (PIE-independent, read-only).
 
 Only after you know the real param **types**, make one call with correct args.
+
+## Players: bans and teleports; other admin mods (2026-10-28)
+- **Bans** (ConanPlayerController, Blueprint-callable): `BanPlayer(PlayerNetId: UniqueNetIdRepl,
+  PlayerNickName: Text)`, `UnbanPlayer(PlayerNetId)`, `ServerGetBannedPlayerList()` and the
+  whitelist pair are **server RPCs** (FunctionFlags at 0xd0 of the UFunction, read-only check:
+  NET + NETSERVER). There is no kick, no server-side chat mute and no per-player build block
+  exposed. The list comes back only through the controller's `SignalBannedPlayerListReady`
+  (`Array<BlacklistedUser>`: `m_PlayerName`, `m_UniqueNetId`), so a widget binds it (AddDelegate,
+  wired live after the paste) on its owning player's controller. `ServerBlacklist` is an actor
+  with nothing Blueprint-visible. A PlayerState gives its id with `BP_GetUniqueId`. Whether the
+  game takes a ban only from a Conan admin is untested (needs a second real player).
+- **Teleport:** `ConanPlayerController.TeleportPlayerServer(TargetLocation, TargetRotation, ...)`
+  is a plain server-side function (not an RPC), called on the moving player's controller.
+- **Typing a cast's input:** a DynamicCast fed by `GetOwningPlayer` pasted with its Object pin a
+  wildcard and no wire (compile error "type of Object is undetermined"). Typing both ends
+  (`cast.pin("Object")` and the call's `ReturnValue`) fixes it, as 10 does for its casts.
+- **Other mods checked with Owl Admin** (UnrealPak `-List` on each mod's `-Windows.utoc`; no shared
+  files, Owl Admin replaces no game files):
+  - Tot ! Enhanced Custom 1.10.71 (3721096154) replaces `SK_human_female`, `SK_human_male` and
+    `W_UICharacterDisplay`. Its armor transmog and ours both set the character's look: the menu
+    setting "owltm" (Items & Loot) turns Owl looks off server-wide (controller `LooksOn`).
+  - Tot ! Enhanced Sudo 1.3.85 (3721090132) uses Shift+U for its admin panel, so the Owl admin
+    menu moved to Shift+O. Its user settings are Shift+Alt+U.
+  - ModControlPanel (Enhanced) (3722388367) is Shift+End; MCPWidgets [Enhanced] (3722374575) has
+    its own restart messages (use it or the Server Restart tab, not both).

@@ -1,7 +1,7 @@
 """owl-admin step 04: the console commands -- one DataActorCommand class each (rows in 05):
 
     dc OwlAdmin                  (client)  open/close the admin menu; its login page shows
-                                           until admin mode is unlocked. Shift+U does the same.
+                                           until admin mode is unlocked. Shift+O does the same.
     dc OwlLogin <password>       (server)  check the password; right -> unlock admin mode
     dc OwlLogout                 (server)  lock admin mode again (the menu's Lock button)
     dc OwlSetPassword <password> (server, Conan admins only)  set or replace the Owl Admin

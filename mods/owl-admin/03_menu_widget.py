@@ -12,12 +12,13 @@ Close) | Gate (WidgetSwitcher):
                     bar), the Bug Reports page lists the players' reports (bug_panel.py) and
                     the HUD page sets what every player sees on screen (hud_panel.py, with its
                     own Save) and the Server Restart page schedules the restart warnings
-                    (restart_panel.py, its own Save too): the footer below is hidden on all four
+                    (restart_panel.py, its own Save too), and the Players page kicks off bans and
+                    teleports (players_panel.py): the footer below is hidden on all five
     2  SetupPage -- first-time "set admin password" form, while the server has no password
 | footer (status, Reset, Apply).
 
 Parent class: Conan's WindowRoot, so the menu is a GUIModule window (row OwlAdminMenu, 06)
-and Conan's GUIModuleController owns its cursor, input, Esc and the Shift+U toggle.
+and Conan's GUIModuleController owns its cursor, input, Esc and the Shift+O toggle.
 
 Graph:
     TabBtn_<tab>.OnClicked -> TabPages.SetActiveWidgetIndex(i)
@@ -49,7 +50,7 @@ import os
 from bpkit import bridge as bp, ir, build, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
 for _m in ("oa_config", "umg_text", "menu_defs", "menu_shell", "ce_panel", "tm_catalog", "ce_catalog", "tm_cell",
-           "bug_panel", "hud_panel", "restart_panel", "restart_ctrl"):
+           "bug_panel", "hud_panel", "restart_panel", "restart_ctrl", "players_panel"):
     sys.modules.pop(_m, None)
 import oa_config as MOD
 import menu_defs as D
@@ -57,6 +58,7 @@ import ce_panel
 import bug_panel
 import hud_panel
 import restart_panel
+import players_panel
 import ce_catalog
 import tm_cell
 from umg_text import Umg
@@ -74,7 +76,7 @@ assert unreal.load_object(None, CTRL_CLS), "run 02_controller.py first: no " + C
 
 u = Umg(MOD.BOARD_SCALE)
 B, R = MOD.FONT_BOLD, MOD.FONT_REGULAR
-s = Shell(u, "RESTRICTIONS · PRIVATE REALM", D.TABS, MOD.MENU_MODULE, (B, R), badge="ADMIN",
+s = Shell(u, "ADMIN MENU", D.TABS, MOD.MENU_MODULE, (B, R), badge="ADMIN",
           side_note="Rows marked LIVE change the game when you press Apply. The rest are saved "
                     "for features that are still being built.",
           status="Apply saves every setting on the server.")
@@ -163,6 +165,8 @@ def setting_rows(tab):
         items += hud_panel.admin_layout(u, B, R)
     if tab == "restart":
         items += restart_panel.admin_layout(u, B, R)
+    if tab == "players":
+        items += players_panel.admin_layout(u, B, R)
     return items
 
 
@@ -231,6 +235,7 @@ ce_panel.add_variables(unreal, unreal.BlueprintEditorLibrary, wbp, unreal.load_o
 bug_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
 hud_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
 restart_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
+players_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
 
 # ================================================================ graph
 GS = "/Script/Engine.GameplayStatics"
@@ -441,9 +446,15 @@ g.typed_input(on_hud, "B", str([t for t, _ti, _h in D.TABS].index("hud")), "int"
 on_restart = g.call("EqualEqual_IntInt", KML, pos=(6700, y0 - 750))
 g.wire(page_idx, "ReturnValue", on_restart, "A", exec=False)
 g.typed_input(on_restart, "B", str([t for t, _ti, _h in D.TABS].index("restart")), "int")
-own_save = g.call("BooleanOR", KML, pos=(6900, y0 - 700))      # the HUD and Server Restart pages save themselves
-g.wire(on_hud, "ReturnValue", own_save, "A", exec=False)
-g.wire(on_restart, "ReturnValue", own_save, "B", exec=False)
+on_players = g.call("EqualEqual_IntInt", KML, pos=(6700, y0 - 900))
+g.wire(page_idx, "ReturnValue", on_players, "A", exec=False)
+g.typed_input(on_players, "B", str([t for t, _ti, _h in D.TABS].index("players")), "int")
+hud_rs = g.call("BooleanOR", KML, pos=(6900, y0 - 850))   # the HUD and Server Restart pages save themselves
+g.wire(on_hud, "ReturnValue", hud_rs, "A", exec=False)
+g.wire(on_restart, "ReturnValue", hud_rs, "B", exec=False)
+own_save = g.call("BooleanOR", KML, pos=(6900, y0 - 700))      # and the Players page has nothing to apply
+g.wire(hud_rs, "ReturnValue", own_save, "A", exec=False)
+g.wire(on_players, "ReturnValue", own_save, "B", exec=False)
 any_own = g.call("BooleanOR", KML, pos=(6900, y0 - 50))
 g.wire(either, "ReturnValue", any_own, "A", exec=False)
 g.wire(own_save, "ReturnValue", any_own, "B", exec=False)
@@ -472,13 +483,18 @@ _hud = ce_panel._Ctx(g, u, RELAY_CLS, owning_player)
 _hud_exits = hud_panel.admin_tick(_hud, _bug_exits, (on_hud, "ReturnValue"), (gac, "ReturnValue"), CTRL_CLS, y=90000)
 # then the Server Restart page's (the same controller)
 _rs = ce_panel._Ctx(g, u, RELAY_CLS, owning_player)
-for e, ep in restart_panel.admin_tick(_rs, _hud_exits, (on_restart, "ReturnValue"), (gac, "ReturnValue"), CTRL_CLS,
-                                      y=100000):
+_rs_exits = restart_panel.admin_tick(_rs, _hud_exits, (on_restart, "ReturnValue"), (gac, "ReturnValue"), CTRL_CLS,
+                                      y=100000)
+# then the Players page's
+_pl = ce_panel._Ctx(g, u, RELAY_CLS, owning_player)
+for e, ep in players_panel.admin_tick(_pl, _rs_exits, (has, "ReturnValue"), (on_players, "ReturnValue"), y=170000):
     g.wire(e, ep, bSync, "execute")
 ce_panel.clicks(g, u, RELAY_CLS, owning_player)
 bug_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 80000)
 hud_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 150000)
 restart_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 160000)
+players_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 180000)
+players_panel.admin_events(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 200000)
 g.wire(both, "ReturnValue", bSync, "Condition", exec=False)
 
 
@@ -565,7 +581,8 @@ _bp_ptr, _g_ptr = bp.find_graph(FULL, "EventGraph")
 bp.clear_graph(_bp_ptr, _g_ptr)
 bp.mark_structurally_modified(_bp_ptr)
 unreal.BlueprintEditorLibrary.compile_blueprint(wbp)
-rep = build.build_graph(FULL, g)
+# post: the Players page's banned-list bind gets its delegate wire live (it doesn't paste)
+rep = build.build_graph(FULL, g, post=lambda gp: players_panel.bind_live(bp, gp))
 assert rep["ok"], "menu graph not clean: %r" % {k: rep[k] for k in ("dropped_nodes", "dropped_links", "orphans", "wildcards", "errors")}
 
 # ================================================================ verify

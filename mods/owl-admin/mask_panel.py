@@ -59,7 +59,7 @@ def player_layout(u, B, R):
     u.border("MaskRightFrame", "#3a1214", 1.0, u.margin(1, 1, 1, 1), "MaskRight")
     u.sized("MaskRightBox", "MaskRightFrame", w=300)
     u.box("HorizontalBox", "MaskBody", [("MaskLeft", ["Size=(SizeRule=Fill)", "Padding=%s" % u.margin(r=12)]),
-                                        ("MaskRightBox", ["VerticalAlignment=VAlign_Top"])])
+                                        ("MaskRightBox", ["VerticalAlignment=VAlign_Top"])], variable=True)
     return [("MaskBody", [])]
 
 

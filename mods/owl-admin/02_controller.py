@@ -34,7 +34,7 @@ CDO: OwlVersion stamped (tell a stale spawned class from the current build), alw
 relevant (else the controller never exists on MP clients, and neither would the unlocked
 list), 0.1 s tick (a menu opening hides the overlay within a tenth of a second).
 
-ReceiveBeginPlay: registers the menu key actions (OwlAdminToggle = Shift+U, OwlPlayerToggle =
+ReceiveBeginPlay: registers the menu key actions (OwlAdminToggle = Shift+O, OwlPlayerToggle =
 Shift+I) that the UI module rows (06) name as their ToggleActionName; then, on the server,
 sets the replicated PasswordIsSet from whether the password save exists. While it's false
 the admin menu shows its "set admin password" page instead of the login page. Then it loads
@@ -122,7 +122,8 @@ bel.add_member_variable(bp_obj, "RelayOwners", bel.get_array_type(actor_t))   # 
 strings_t = bel.get_array_type(bel.get_basic_type_by_name("string"))
 for var, vtype, replicated in [("AppliedSettings", strings_t, True),     # the saved menu values
                                ("PendingSettings", strings_t, False),    # server-only hand-off from OwlApply
-                               ("SettingsVersion", bel.get_basic_type_by_name("int"), True)] + \
+                               ("SettingsVersion", bel.get_basic_type_by_name("int"), True),
+                               ("LooksOn", bel.get_basic_type_by_name("bool"), True)] + \
                               [("Live_" + sid, bel.get_basic_type_by_name("real"), True) for sid in D.LIVE]:
     bel.add_member_variable(bp_obj, var, vtype)
     if replicated:
@@ -388,7 +389,7 @@ for i, (event, fn) in enumerate((("OwlUnlockPending", "Array_AddUnique"), ("OwlL
     g.wire(g.var_get("PendingPlayer", "object", ir.obj_path(PSTATE), pos=(250, y + 220)), "PendingPlayer",
            op, "NewItem" if fn == "Array_AddUnique" else "Item", exec=False)
 
-# Menu keys: register the input actions the module rows (06) toggle on -- Shift+U / Shift+I.
+# Menu keys: register the input actions the module rows (06) toggle on -- Shift+O / Shift+I.
 # AddActionMapping is an AddUnique on the in-memory input settings (never saved to an ini) and
 # rebuilds every PlayerInput's key map; PlayerInputs created later read it anyway. Done at
 # BeginPlay because these calls are dropped when pasted into the ModDataTableOperations
@@ -443,6 +444,7 @@ SS_CLS = MOD.SERVER_SETTINGS_CLS
 SETTINGS_SG_CLS = MOD.full(PKG, MOD.SETTINGS_SAVEGAME) + "_C"
 assert unreal.load_object(None, SETTINGS_SG_CLS), "run 08_savegame.py first: no " + SETTINGS_SG_CLS
 N_SETTINGS = len(D.SETTINGS)
+PAD_FROM = 72         # a save made before "owltm" (v1.3) holds 72 values; newer settings get their defaults
 BY_ID = {st["id"]: st for st in D.SETTINGS}
 
 
@@ -476,6 +478,60 @@ def applied_value(sid, pos):
     g.typed_input(clamp, "Min", str(float(lo)), "real")
     g.typed_input(clamp, "Max", str(float(hi)), "real")
     return clamp
+
+
+def pad_settings(prev, prev_pin, pos):
+    """A save from before the newest settings (PAD_FROM values or more) gets their defaults
+    appended, so it still loads. Returns the (node, exec pin) exits."""
+    exits = [(prev, prev_pin)]
+    x, y = pos
+    for k in range(PAD_FROM, N_SETTINGS):
+        st = D.SETTINGS[k]
+        ln = g.array_len(g.array_var("AppliedSettings", pos=(x, y + 250), elem_cat="string"), "AppliedSettings",
+                         (x + 150, y + 250), elem_cat="string")
+        eq = g.call("EqualEqual_IntInt", KML, pos=(x + 300, y + 250))
+        g.wire(ln, "ReturnValue", eq, "A", exec=False)
+        g.typed_input(eq, "B", str(k), "int")
+        b = g.branch(pos=(x + 300, y))
+        for e, ep in exits:
+            g.wire(e, ep, b, "execute")
+        g.wire(eq, "ReturnValue", b, "Condition", exec=False)
+        add = g.array_fn("Array_Add", pos=(x + 600, y), elem_cat="string")
+        g.wire(g.array_var("AppliedSettings", pos=(x + 450, y + 250), elem_cat="string"), "AppliedSettings", add,
+               "TargetArray", exec=False)
+        g.array_item_pin(add, "NewItem", "string")
+        default = ("1" if st["default"] else "0") if st["type"] == "toggle" else "%g" % st["default"]
+        g.typed_input(add, "NewItem", default, "string")
+        g.wire(b, "then", add, "execute")
+        exits = [(b, "else"), (add, "then")]
+        x += 900
+    return exits
+
+
+def update_looks(entries, pos):
+    """LooksOn = the "owltm" setting (Owl Transmog and Animal Masks shown), true while the settings
+    don't hold it. Entered from each (node, exec pin) in entries; returns the exits."""
+    x, y = pos
+    k = D.index("owltm")
+    ln = g.array_len(g.array_var("AppliedSettings", pos=(x, y + 250), elem_cat="string"), "AppliedSettings",
+                     (x + 150, y + 250), elem_cat="string")
+    has = g.call("Greater_IntInt", KML, pos=(x + 300, y + 250))
+    g.wire(ln, "ReturnValue", has, "A", exec=False)
+    g.typed_input(has, "B", str(k), "int")
+    b = g.branch(pos=(x + 300, y))
+    for e, ep in entries:
+        g.wire(e, ep, b, "execute")
+    g.wire(has, "ReturnValue", b, "Condition", exec=False)
+    on = g.call("GreaterEqual_DoubleDouble", KML, pos=(x + 1000, y + 250))
+    g.wire(applied_value("owltm", (x + 300, y + 450)), "ReturnValue", on, "A", exec=False)
+    g.typed_input(on, "B", "0.5", "real")
+    s1 = g.var_set("LooksOn", "bool", pos=(x + 1300, y))
+    g.wire(on, "ReturnValue", s1, "LooksOn", exec=False)
+    g.wire(b, "then", s1, "execute")
+    s2 = g.var_set("LooksOn", "bool", pos=(x + 1300, y + 300))
+    s2.pin("LooksOn").literal("true")
+    g.wire(b, "else", s2, "execute")
+    return [(s1, "then"), (s2, "then")]
 
 
 def push_live(prev, prev_pin, kinds, pos):
@@ -548,7 +604,8 @@ apEv = g.custom_event("OwlSettingsPending", pos=(0, 2600))
 apSet = set_applied(g.array_var("PendingSettings", pos=(0, 2800), elem_cat="string"), "PendingSettings", (300, 2600))
 g.wire(apEv, "then", apSet, "execute")
 last, last_pin = push_live(apSet, "then", ("ini", "bp"), (600, 2600))
-read_live([(last, last_pin)], (600 + 700 + 900 * len(D.LIVE), 2600))
+update_looks([(read_live([(last, last_pin)], (600 + 700 + 900 * len(D.LIVE), 2600)), "then")],
+             (600 + 1400 + 900 * len(D.LIVE), 2600))
 
 # BeginPlay, server, after PasswordIsSet: load the saved settings. The "ini" ones are already
 # in effect (SetServerSetting wrote them to ServerSettings.ini); the "bp" ones are re-applied.
@@ -579,10 +636,12 @@ seq = g.call("EqualEqual_IntInt", KML, pos=(1100, y + 250))
 g.wire(slen, "ReturnValue", seq, "A", exec=False)
 g.typed_input(seq, "B", str(N_SETTINGS), "int")
 bLen = g.branch(pos=(1100, y))
-g.wire(bgSet, "then", bLen, "execute")
+for e, ep in pad_settings(bgSet, "then", (600, y - 700)):
+    g.wire(e, ep, bLen, "execute")
 g.wire(seq, "ReturnValue", bLen, "Condition", exec=False)
 last, last_pin = push_live(bLen, "then", ("bp",), (1400, y))
 loaded = read_live([(last, last_pin), (bSave, "else"), (scast, "CastFailed"), (bLen, "else")], (1400, y + 900))
+looks_set = update_looks([(loaded, "then")], (1400, y + 1500))
 
 # BeginPlay, server, after the settings: the HUD tab's save into HudOn / HudText, if it holds one
 # value per item; else the defaults stay (everything off). HudVer goes up either way, so every
@@ -592,7 +651,8 @@ y = 4800
 hdse = g.call("DoesSaveGameExist", GS, pos=(0, y))
 g.typed_input(hdse, "SlotName", MOD.HUD_SLOT, "string")
 g.typed_input(hdse, "UserIndex", "0", "int")
-g.wire(loaded, "then", hdse, "execute")
+for _e, _ep in looks_set:
+    g.wire(_e, _ep, hdse, "execute")
 bHud = g.branch(pos=(250, y))
 g.wire(hdse, "then", bHud, "execute")
 g.wire(hdse, "ReturnValue", bHud, "Condition", exec=False)
@@ -712,6 +772,7 @@ cdo.set_editor_property("HudOn", [0] * len(D.HUD_ITEMS))
 cdo.set_editor_property("HudText", [""] * len(D.HUD_TEXTS))
 cdo.set_editor_property("HudSeen", -1)
 restart_ctrl.defaults(cdo)       # no daily restart; RsLeft / RsBeepSeen / RsClock -1
+cdo.set_editor_property("LooksOn", True)   # Owl Transmog and Animal Masks shown until the settings say no
 cdo.set_editor_property("always_relevant", True)
 tk = cdo.get_editor_property("primary_actor_tick")
 tk.set_editor_property("tick_interval", 0.1)

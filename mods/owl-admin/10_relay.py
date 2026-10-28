@@ -32,6 +32,8 @@ Tick (0.1 s):
         hidden hair, tucked legs), never saves it, and it doesn't change stats. A picked slot's
         dye is cleared (the real item's dye would tint the transmog piece). Redone only when
         the result changes (TmApplied: the pawn + the ten mesh ids); an empty look turns it off.
+        While the admins have Owl looks off (the controller's LooksOn, setting "owltm"), every look
+        counts as empty, so other mods' looks (Tot ! Custom) are left alone.
         The live layout is only ever read: writing to it rewrites the player's character.
 
 Character editor (the admin menu's Characters tab, 03): the OwlServerCe* / OwlClientCe* events
@@ -50,6 +52,9 @@ Rs* / SvRs* variables come from restart_server.py; they write the controller's R
 The Pet Shop (07): OwlServerPetWallet / OwlServerPetBuy / OwlClientPet and their Pet* / SvPet*
 variables come from pet_server.py; the prices (PetIds / PetPrices / PetNames) are class defaults.
 
+The Players tab (03): OwlServerPlBanList / PlBan / PlUnban / PlGoto / PlBring and OwlClientPl with
+PlMsg / PlMsgVer come from players_server.py.
+
 Run with Play STOPPED, after 02 (which creates the empty asset so it can spawn it) and 08:
     python ue_run.py mods/owl-admin/10_relay.py
 """
@@ -62,7 +67,7 @@ import unreal
 import os
 from bpkit import bridge as bp, ir, build, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
-for _m in ("oa_config", "oa_auth", "menu_defs", "ce_server", "bug_server", "hud_server", "restart_server", "pet_server"):
+for _m in ("oa_config", "oa_auth", "menu_defs", "ce_server", "bug_server", "hud_server", "restart_server", "pet_server", "players_server"):
     sys.modules.pop(_m, None)
 import types
 import oa_config as MOD
@@ -72,6 +77,7 @@ import bug_server
 import hud_server
 import restart_server
 import pet_server
+import players_server
 from oa_auth import Auth
 
 assert not unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).is_in_play_in_editor(), \
@@ -134,6 +140,8 @@ CE_VARS += hud_server.variables(unreal, bel)
 CE_VARS += restart_server.variables(unreal, bel)
 # the Pet Shop (pet_server): the player's wallet + buy answer, and the prices on the class defaults
 CE_VARS += pet_server.variables(unreal, bel, unreal.load_object(None, MOD.full(PKG, MOD.CE_SAVEGAME) + "_C"))
+# the Players tab (players_server)
+CE_VARS += players_server.variables(unreal, bel)
 for var, vtype in CE_VARS:
     bel.add_member_variable(bp_obj, var, vtype)
     bel.set_blueprint_variable_replication(bp_obj, var, REPL.NONE)
@@ -635,9 +643,23 @@ for m, sp in LAYOUT_MEMBERS:
         g.wire(mkD, "CharacterArmourDyeParams", mkL, m, exec=False)
     else:
         g.wire(brk, m, mkL, m, exec=False)
+# the admins turned Owl looks off (the controller's LooksOn, menu setting "owltm"): no look, as if
+# nothing were picked. A controller not here yet counts as on.
+lgac = Auth(g, CTRL_CLS, SG_CLS, MOD.SAVE_SLOT, None).controller(bLen, "then", (2300, Y - 900))
+lvalid = g.call("IsValid", KSL, pos=(2300, Y - 600))
+g.wire(lgac, "ReturnValue", lvalid, "Object", exec=False)
+bCtl = g.branch(pos=(2550, Y - 900))
+g.wire(lgac, "then", bCtl, "execute")
+g.wire(lvalid, "ReturnValue", bCtl, "Condition", exec=False)
+lon = g.var_get("LooksOn", "bool", parent=CTRL_CLS, pos=(2550, Y - 600))
+g.wire(lgac, "ReturnValue", lon, "self", exec=False)
+bLooks = g.branch(pos=(2800, Y - 900))
+g.wire(bCtl, "then", bLooks, "execute")
+g.wire(lon, "LooksOn", bLooks, "Condition", exec=False)
 # a pick -> (re)apply when the result changed
 bAny = g.branch(pos=(2600, Y))
-g.wire(bLen, "then", bAny, "execute")
+for e, ep in ((bLooks, "then"), (bCtl, "else")):
+    g.wire(e, ep, bAny, "execute")
 g.wire(anyPick[0], anyPick[1], bAny, "Condition", exec=False)
 changed = g.call("NotEqual_StrStr", KSTR, pos=(4400, Y + 250))
 g.wire(key[0], key[1], changed, "A", exec=False)
@@ -654,7 +676,7 @@ g.wire(setKey, "then", setOn, "execute")
 toggle(setOn, "then", True, (mkL, "CharacterLayout"), (5400, Y))
 # no pick (or no valid look) -> turn it off, once
 bWasOn = g.branch(pos=(2900, Y + 2800))
-for e, ep in ((bAny, "else"), (bLen, "else")):
+for e, ep in ((bAny, "else"), (bLen, "else"), (bLooks, "else")):
     g.wire(e, ep, bWasOn, "execute")
 g.wire(g.var_get("TmOn", "bool", pos=(2700, Y + 3000)), "TmOn", bWasOn, "Condition", exec=False)
 setOff = g.var_set("TmOn", "bool", pos=(3200, Y + 2800))
@@ -690,6 +712,11 @@ EVENTS.update(pet_server.build(types.SimpleNamespace(
     g=g, self_call=self_call, owner_pc=owner_pc, save_slot=save_slot, Auth=Auth, MOD=MOD, PKG=PKG,
     CTRL_CLS=CTRL_CLS, SG_CLS=SG_CLS, RUN_ON_SERVER=RUN_ON_SERVER, RUN_ON_OWNING_CLIENT=RUN_ON_OWNING_CLIENT),
     y0=72000))
+# ---------------------------------------------------------------- the Players tab (admin menu 03)
+EVENTS.update(players_server.build(types.SimpleNamespace(
+    g=g, self_call=self_call, owner_pc=owner_pc, save_slot=save_slot, Auth=Auth, MOD=MOD, PKG=PKG,
+    CTRL_CLS=CTRL_CLS, SG_CLS=SG_CLS, RUN_ON_SERVER=RUN_ON_SERVER, RUN_ON_OWNING_CLIENT=RUN_ON_OWNING_CLIENT),
+    y0=78000))
 
 # Clear + compile first, or a rebuild renames the pasted events (see 02)
 bel.compile_blueprint(bp_obj)

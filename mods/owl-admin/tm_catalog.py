@@ -7,8 +7,8 @@ Every ItemTable row worn in one of the five transmog slots (menu_defs.TM_SLOTS: 
 menu_defs.TM_LAYOUT: the character shows it by putting the item id in that layout member).
 Baked into the player menu as arrays (07), so the menu needs no data-table reads at runtime.
 Names are the English text from the table's NSLOCTEXT values; rows named through a string table
-(LOCTABLE, ~20, unreadable from Python here) and dev rows ("xx...") are skipped. About half the
-wearables have no icon (icon = "").
+(LOCTABLE, ~20, unreadable from Python here) and dev rows ("xx...") are skipped. Icons: item_icon()
+(Icon, else IconLayers[0]); the rest have none (icon = "").
 """
 import json
 import re
@@ -17,6 +17,17 @@ ITEM_TABLE = "/Game/Items/ItemTable"
 VARIATION_TABLE = "/Game/Items/EquipmentVariationTable"
 _NSLOC = re.compile(r'NSLOCTEXT\(\s*"[^"]*"\s*,\s*"[^"]*"\s*,\s*"((?:[^"\\]|\\.)*)"\s*\)')
 _DEV_ICON = "icon_DEV_needs_icon"
+
+
+def item_icon(row):
+    """An ItemTable row's icon texture path, "" if none: its Icon, else the first of its IconLayers
+    (many epic / DLC pieces only have layers: the picture, then a rarity border), skipping the dev
+    placeholder. With no icon the cell shows a gem."""
+    for icon in [row.get("Icon")] + list(row.get("IconLayers") or [])[:1]:
+        icon = str(icon or "")
+        if icon and icon != "None" and _DEV_ICON not in icon:
+            return icon
+    return ""
 
 
 def catalog(unreal):
@@ -49,9 +60,7 @@ def catalog(unreal):
             continue
         if mesh_slot.get(rid) != D.TM_LAYOUT[D.TM_SLOTS[slot_of[loc]][0]][0]:
             continue                           # no mesh, or one for another slot (2 odd rows)
-        icon = str(r.get("Icon") or "")
-        if icon == "None" or _DEV_ICON in icon:
-            icon = ""                          # about half the wearables have no icon: the cell shows a gem
+        icon = item_icon(r)
         out.append({"id": rid, "slot": slot_of[loc], "cat": cat_of.get(str(r.get("GUICategory")), other),
                     "name": display[rid], "icon": icon})
     # item variants (tiers, epic versions) repeat a name and look: one per slot + name, the
