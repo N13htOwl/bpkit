@@ -91,8 +91,24 @@ VERSION = 10  # v2: hidden until the player has a character; v3: notice cards mo
               # player menu's Transmog tab (looks + outfits saved per player on the server)
 STEAM_FILE_ID = "3828691613"  # the Workshop item (first upload 2026-10-28, Hidden). Every update must
                               # go to this id: check the Dev Kit's mod window shows it before uploading
-VERSION_NAME = "V1.0"  # what players see (Bug Report form); matches modinfo.json's 1.0. VERSION
-                       # above is the internal build number (build logs, the controller's OwlVersion)
+VERSION_NAME = "V1.2"  # fallback for version_name(); VERSION above is the internal build number
+                       # (build logs, the controller's OwlVersion)
+
+
+def version_name():
+    """What players see (Bug Report form): "V<major>.<minor>" from the mod's modinfo.json at build
+    time, so it follows the version set in the Dev Kit's mod window (set it before building 07).
+    VERSION_NAME if the file can't be read."""
+    import json
+    import os
+    import unreal
+    path = os.path.join(unreal.Paths.project_content_dir(), "Mods", OUTPUT_PKG.rsplit("/", 1)[-1], "modinfo.json")
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            info = json.load(f)
+        return "V%d.%d" % (info["versionMajor"], info["versionMinor"])
+    except (OSError, ValueError, KeyError):
+        return VERSION_NAME
 
 
 def full(pkg, name):

@@ -78,7 +78,7 @@ def player_layout(u, B, R):
     u.strip("BugSideLine", "#2a1012", u.margin(t=1))
     side = u.box("VerticalBox", "BugSideList", [
         (_lab(u, B, "BugSideLab", "Sent with your report"), gap(10)),
-        (_fact(u, B, R, "BugVer", "Mod version", MOD.VERSION_NAME), gap(6)),
+        (_fact(u, B, R, "BugVer", "Mod version", MOD.version_name()), gap(6)),
         (_fact(u, B, R, "BugTime", "Time", ""), gap(6)),
         (_fact(u, B, R, "BugWhere", "Location", ""), gap(12)),
         ("BugSideLine", gap(12)), ("BugNote", [])])
