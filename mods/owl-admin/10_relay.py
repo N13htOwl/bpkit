@@ -55,6 +55,9 @@ variables come from pet_server.py; the prices (PetIds / PetPrices / PetNames) ar
 The Players tab (03): OwlServerPlBanList / PlBan / PlUnban / PlGoto / PlBring and OwlClientPl with
 PlMsg / PlMsgVer come from players_server.py.
 
+Kits (03 admin, 07 players): OwlServerKit* / OwlClientKit* and their Kit* / SvKit* come from
+kits_server.py; the kits themselves are the controller's (02, kits_ctrl).
+
 Run with Play STOPPED, after 02 (which creates the empty asset so it can spawn it) and 08:
     python ue_run.py mods/owl-admin/10_relay.py
 """
@@ -67,7 +70,7 @@ import unreal
 import os
 from bpkit import bridge as bp, ir, build, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
-for _m in ("oa_config", "oa_auth", "menu_defs", "ce_server", "bug_server", "hud_server", "restart_server", "pet_server", "players_server"):
+for _m in ("oa_config", "oa_auth", "menu_defs", "ce_panel", "ce_server", "bug_server", "hud_server", "restart_server", "pet_server", "players_server", "kits_server"):
     sys.modules.pop(_m, None)
 import types
 import oa_config as MOD
@@ -78,6 +81,7 @@ import hud_server
 import restart_server
 import pet_server
 import players_server
+import kits_server
 from oa_auth import Auth
 
 assert not unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).is_in_play_in_editor(), \
@@ -142,6 +146,8 @@ CE_VARS += restart_server.variables(unreal, bel)
 CE_VARS += pet_server.variables(unreal, bel, unreal.load_object(None, MOD.full(PKG, MOD.CE_SAVEGAME) + "_C"))
 # the Players tab (players_server)
 CE_VARS += players_server.variables(unreal, bel)
+# Kits (kits_server)
+CE_VARS += kits_server.variables(unreal, bel)
 for var, vtype in CE_VARS:
     bel.add_member_variable(bp_obj, var, vtype)
     bel.set_blueprint_variable_replication(bp_obj, var, REPL.NONE)
@@ -717,6 +723,11 @@ EVENTS.update(players_server.build(types.SimpleNamespace(
     g=g, self_call=self_call, owner_pc=owner_pc, save_slot=save_slot, Auth=Auth, MOD=MOD, PKG=PKG,
     CTRL_CLS=CTRL_CLS, SG_CLS=SG_CLS, RUN_ON_SERVER=RUN_ON_SERVER, RUN_ON_OWNING_CLIENT=RUN_ON_OWNING_CLIENT),
     y0=78000))
+# ---------------------------------------------------------------- Kits (admin menu 03, player menu 07)
+EVENTS.update(kits_server.build(types.SimpleNamespace(
+    g=g, self_call=self_call, owner_pc=owner_pc, save_slot=save_slot, Auth=Auth, MOD=MOD, PKG=PKG,
+    CTRL_CLS=CTRL_CLS, SG_CLS=SG_CLS, RUN_ON_SERVER=RUN_ON_SERVER, RUN_ON_OWNING_CLIENT=RUN_ON_OWNING_CLIENT),
+    y0=84000))
 
 # Clear + compile first, or a rebuild renames the pasted events (see 02)
 bel.compile_blueprint(bp_obj)

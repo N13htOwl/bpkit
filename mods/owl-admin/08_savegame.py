@@ -18,6 +18,11 @@
                                                 per text item (menu_defs.HUD_TEXTS)
     BP_OwlRestartSave  (slot OwlRestart)        Vals: the Server Restart tab, one int per
                                                 menu_defs.RS_LIMITS entry (daily, time, warnings, sound)
+    BP_OwlKitsSave     (slot OwlKits)           Names: one per kit (menu_defs.N_KITS); per kit entry, in
+                                                parallel: EKit (which kit), EIds (item template id),
+                                                EQty, ENames (the item's name, for the menus)
+    BP_OwlKitClaimSave (slot OwlKit_<net id>, one per player)  Last: per kit, the minute (Unix time /
+                                                60) the player last claimed it, 0 = never
 
 Password: written by `dc OwlSetPassword <password>` (Conan admins only) and read by
 `dc OwlLogin`. Settings: written by `dc OwlApply ...` (the menu's APPLY) and read by the
@@ -57,7 +62,11 @@ for name, variables in ((MOD.SAVEGAME, [("Password", string_t, "")]),
                                              ("BuyQ", int_t, 0)]),
                         (MOD.BUG_SAVEGAME, [("Reports", strings_t, []), ("Done", bel.get_array_type(int_t), [])]),
                         (MOD.HUD_SAVEGAME, [("On", bel.get_array_type(int_t), []), ("Text", strings_t, [])]),
-                        (MOD.RESTART_SAVEGAME, [("Vals", bel.get_array_type(int_t), [])])):
+                        (MOD.RESTART_SAVEGAME, [("Vals", bel.get_array_type(int_t), [])]),
+                        (MOD.KITS_SAVEGAME, [("Names", strings_t, []), ("EKit", bel.get_array_type(int_t), []),
+                                             ("EIds", bel.get_array_type(int_t), []),
+                                             ("EQty", bel.get_array_type(int_t), []), ("ENames", strings_t, [])]),
+                        (MOD.KITCLAIM_SAVEGAME, [("Last", bel.get_array_type(int_t), [])])):
     bp_obj, _ = bp.scratch_blueprint(pkg=PKG, name=name, parent=unreal.SaveGame)
     for var, vtype, _empty in variables:
         bel.add_member_variable(bp_obj, var, vtype)                    # no-op if present

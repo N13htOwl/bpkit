@@ -223,7 +223,8 @@ def _catalog_page(u, B, R):
         (_field(u, R, "CeCatSearch", "Search all items"), ["Padding=%s" % u.margin(b=8)]),
         ("CeCatCount", ["Padding=%s" % u.margin(b=8)]),
         (_grid(u, "CeCatGrid"), ["Padding=%s" % u.margin(b=12)]),
-        (_detail(u, B, R, "CeCatBar", [("CeCatGrant", "Grant to player", True)]), [])])
+        (_detail(u, B, R, "CeCatBar", [("CeCatKit%d" % k, "Add to Kit %d" % (k + 1), False) for k in range(D.N_KITS)]
+                 + [("CeCatGrant", "Grant to player", True)]), [])])     # Add to Kit: kits_panel.catalog_clicks
 
 
 def layout(u, B, R):

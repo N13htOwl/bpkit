@@ -15,7 +15,7 @@ TABS = [
     ("players", "Players", "Teleport to players, and ban or unban them"),
     ("characters", "Characters", "Fix levels, stats and points"),
     ("commands", "Commands", "Player chat commands and cooldowns"),
-    ("kits", "Kits", "Item bundles players can claim with /kits"),
+    ("kits", "Kits", "Item bundles players claim in the player menu (Shift+I)"),
     ("trading", "Trading", "Rules for players trading items with each other"),
     ("pets", "Pets", "Custom pets players can buy"),
     ("hud", "HUD", "What every player sees on screen"),
@@ -99,8 +99,10 @@ SETTINGS = [
     T("petdie", "pets", "Pets can die", "A pet that is killed must be bought again. When off, it only has to be summoned again after a short wait.", False),
     T("petlog", "pets", "Log pet purchases", "Records who bought which pet, and when.", True),
     T("tradeadmin", "trading", "Post trades to this menu", "Each finished trade appears in the trade log below, and online admins get a notice.", True),
-    T("kitson", "kits", "/kits", "Lets players open the kit list and claim a kit.", True),
-    T("kitcombat", "kits", "Block /kits in combat", "Kits cannot be claimed right after fighting.", True),
+    T("kitson", "kits", "Kits", "Lets players claim kits in the player menu's Kits tab.", True),
+    # was "kitcombat" (Block /kits in combat): Conan has no in-combat state for players. Same place in
+    # the list, so a saved value stays where it is read
+    T("kitlog", "kits", "Log kit claims", "Adds each claim to the player's admin log (Characters, Log).", True),
     T("kit1on", "kits", "Kit 1", "Available to claim. Name and items are set below.", True),
     N("kit1cd", "kits", "Kit 1 cooldown", "Minutes before the same player can claim Kit 1 again.", 0, 10080, 60, "m", 1440),
     T("kit2on", "kits", "Kit 2", "Available to claim. Name and items are set below.", True),
@@ -143,6 +145,7 @@ PLAYER_TABS = [
     ("pets", "Pet Shop", "Buy companion pets with coins"),
     ("masks", "Animal Masks", "Wear an animal mask"),
     ("equipment", "Equipment", "Your gear and armor"),
+    ("kits", "Kits", "Claim the kits the admins set up"),
     ("bugreport", "Bug Report", "Tell the admins about a problem"),
 ]
 
@@ -235,12 +238,17 @@ MASKS = [("Aspect of the Wolf", "91331", _AR + "icon_greatwolf_helm.icon_greatwo
          ("The Horned Helmet", "92107", _AR + "icon_heavy_plated_leather_helmet_v2.icon_heavy_plated_leather_helmet_v2"),
          ("Scorpion Helm", "92108", _AR + "icon_stygian_M_helmet.icon_stygian_M_helmet"),
          ("Cimmerian Fur Helmet", "52566", _AR + "icon_cimmerian_M_helmet.icon_cimmerian_M_helmet")]
+# Kits (admin menu Kits tab + Characters, Item catalog: Add to Kit; player menu Kits tab). The kit
+# settings are menu SETTINGS: "kitson", "kitlog", then kit<n>on / kit<n>cd for n = 1..N_KITS, in that order.
+N_KITS = 3
+KIT_NAMES = ["Kit 1", "Kit 2", "Kit 3"]   # until an admin renames them
+KIT_MAX_ITEMS = 12                        # entries per kit
+KIT_NAME_MAX = 24                         # characters
 CE_SELL_Q = (1, 40)   # NPC sell price, in quarters: 0.25x .. 10x
 CE_BUY_Q = (1, 16)    # NPC buy price: 0.25x .. 4x
 
 PANELS = {
     "access": ["Access log"],
-    "kits": ["Kit contents editor"],
     "trading": ["Trade log"],
     "scripting": ["Script editor and console"],
     "discord": ["Discord webhook"],

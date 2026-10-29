@@ -45,6 +45,11 @@ HUD_SLOT = "OwlHud"
 # Server Restart (the admin menu's Server Restart tab -> every player's alert banner + sound)
 RESTART_SAVEGAME = "BP_OwlRestartSave"   # Vals: one int per menu_defs.RS_LIMITS entry
 RESTART_SLOT = "OwlRestart"
+# Kits: what is in each kit (server-wide), and each player's last claim per kit
+KITS_SAVEGAME = "BP_OwlKitsSave"      # Names (one per kit); per entry: EKit, EIds, EQty, ENames
+KITS_SLOT = "OwlKits"
+KITCLAIM_SAVEGAME = "BP_OwlKitClaimSave"   # Last: per kit, the minute (Unix time / 60) it was claimed, 0 = never
+KITCLAIM_SLOT_PREFIX = "OwlKit_"           # OwlKit_<player net id>
 
 # Conan's server settings actor (a BP subclass of ServerSettings): the menu's LIVE settings
 # (menu_defs.LIVE) are pushed into it -- native ones via SetServerSetting, which also writes

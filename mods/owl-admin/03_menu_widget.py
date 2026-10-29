@@ -13,7 +13,9 @@ Close) | Gate (WidgetSwitcher):
                     the HUD page sets what every player sees on screen (hud_panel.py, with its
                     own Save) and the Server Restart page schedules the restart warnings
                     (restart_panel.py, its own Save too), and the Players page kicks off bans and
-                    teleports (players_panel.py): the footer below is hidden on all five
+                    teleports (players_panel.py): the footer below is hidden on all five.
+                    The Kits page's settings are followed by the kits' names and items
+                    (kits_panel.py; items are added from the Item catalog)
     2  SetupPage -- first-time "set admin password" form, while the server has no password
 | footer (status, Reset, Apply).
 
@@ -50,7 +52,7 @@ import os
 from bpkit import bridge as bp, ir, build, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
 for _m in ("oa_config", "umg_text", "menu_defs", "menu_shell", "ce_panel", "tm_catalog", "ce_catalog", "tm_cell",
-           "bug_panel", "hud_panel", "restart_panel", "restart_ctrl", "players_panel"):
+           "bug_panel", "hud_panel", "restart_panel", "restart_ctrl", "players_panel", "kits_panel"):
     sys.modules.pop(_m, None)
 import oa_config as MOD
 import menu_defs as D
@@ -59,6 +61,7 @@ import bug_panel
 import hud_panel
 import restart_panel
 import players_panel
+import kits_panel
 import ce_catalog
 import tm_cell
 from umg_text import Umg
@@ -167,6 +170,8 @@ def setting_rows(tab):
         items += restart_panel.admin_layout(u, B, R)
     if tab == "players":
         items += players_panel.admin_layout(u, B, R)
+    if tab == "kits":
+        items += kits_panel.admin_layout(u, B, R)
     return items
 
 
@@ -236,6 +241,7 @@ bug_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
 hud_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
 restart_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
 players_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
+kits_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
 
 # ================================================================ graph
 GS = "/Script/Engine.GameplayStatics"
@@ -487,7 +493,10 @@ _rs_exits = restart_panel.admin_tick(_rs, _hud_exits, (on_restart, "ReturnValue"
                                       y=100000)
 # then the Players page's
 _pl = ce_panel._Ctx(g, u, RELAY_CLS, owning_player)
-for e, ep in players_panel.admin_tick(_pl, _rs_exits, (has, "ReturnValue"), (on_players, "ReturnValue"), y=170000):
+_pl_exits = players_panel.admin_tick(_pl, _rs_exits, (has, "ReturnValue"), (on_players, "ReturnValue"), y=170000)
+# then the Kits page's (its names and items; the controller found above)
+_kit = ce_panel._Ctx(g, u, RELAY_CLS, owning_player)
+for e, ep in kits_panel.admin_tick(_kit, _pl_exits, (has, "ReturnValue"), (gac, "ReturnValue"), CTRL_CLS, y=210000):
     g.wire(e, ep, bSync, "execute")
 ce_panel.clicks(g, u, RELAY_CLS, owning_player)
 bug_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 80000)
@@ -495,6 +504,8 @@ hud_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 150000)
 restart_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 160000)
 players_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 180000)
 players_panel.admin_events(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 200000)
+kits_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 240000)
+kits_panel.catalog_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 270000)
 g.wire(both, "ReturnValue", bSync, "Condition", exec=False)
 
 

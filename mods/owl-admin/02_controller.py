@@ -72,11 +72,12 @@ import unreal
 import os
 from bpkit import bridge as bp, ir, build, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
-for _m in ("oa_config", "menu_defs", "menu_shell", "ce_panel", "restart_ctrl"):
+for _m in ("oa_config", "menu_defs", "menu_shell", "ce_panel", "restart_ctrl", "kits_ctrl"):
     sys.modules.pop(_m, None)
 import oa_config as MOD
 import menu_defs as D
 import restart_ctrl
+import kits_ctrl
 from ce_panel import _Ctx
 
 assert not unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).is_in_play_in_editor(), \
@@ -146,6 +147,13 @@ for var, vtype, replicated in restart_ctrl.variables(bel):
                                            unreal.BlueprintVariableReplication.NONE)
 RS_SG_CLS = MOD.full(PKG, MOD.RESTART_SAVEGAME) + "_C"
 assert unreal.load_object(None, RS_SG_CLS), "run 08_savegame.py first: no " + RS_SG_CLS
+# Kits (kits_ctrl): what is in each kit, for every player's menu
+for var, vtype, replicated in kits_ctrl.variables(bel):
+    bel.add_member_variable(bp_obj, var, vtype)
+    bel.set_blueprint_variable_replication(bp_obj, var, REPL if replicated else
+                                           unreal.BlueprintVariableReplication.NONE)
+KITS_SG_CLS = MOD.full(PKG, MOD.KITS_SAVEGAME) + "_C"
+assert unreal.load_object(None, KITS_SG_CLS), "run 08_savegame.py first: no " + KITS_SG_CLS
 print("controller BP:", FULL)
 
 
@@ -732,6 +740,8 @@ g.wire(rsrc, "Vals", rset, "RsVals", exec=False)
 _rs.go(rset)
 _rs.exits += [(bRs, "else"), (rcast, "CastFailed"), (bRsLen, "else")]
 _rs.bump("RsVer", (1900, y))
+# then the kits (the OwlKits save into the Kit* arrays)
+kits_ctrl.load(_rs, KITS_SG_CLS, y + 1000)
 
 # Clear + compile first: a rebuild pastes OwlUnlockPending/OwlLockPending while the compiled class
 # still has functions of those names, and the editor renames the pasted events to "CustomEvent",
@@ -773,6 +783,7 @@ cdo.set_editor_property("HudText", [""] * len(D.HUD_TEXTS))
 cdo.set_editor_property("HudSeen", -1)
 restart_ctrl.defaults(cdo)       # no daily restart; RsLeft / RsBeepSeen / RsClock -1
 cdo.set_editor_property("LooksOn", True)   # Owl Transmog and Animal Masks shown until the settings say no
+kits_ctrl.defaults(cdo)          # Kit 1 / 2 / 3, no items
 cdo.set_editor_property("always_relevant", True)
 tk = cdo.get_editor_property("primary_actor_tick")
 tk.set_editor_property("tick_interval", 0.1)
