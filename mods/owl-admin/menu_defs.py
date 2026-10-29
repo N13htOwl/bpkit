@@ -22,12 +22,17 @@ TABS = [
     ("restart", "Server Restart", "Warn players before a restart"),
     ("scripting", "Scripting", "Write and run admin scripts"),
     ("discord", "Discord", "Send server events to a Discord channel"),
-    ("cheats", "Cheats", "Admin-only powers for your own character. Every use is logged"),
+    ("cheats", "Cheats", "Powers for your own character while in admin mode. Every change is logged"),
 ]
 
 
 def T(id, tab, label, desc, default):
     return {"id": id, "tab": tab, "label": label, "desc": desc, "type": "toggle", "default": default}
+
+
+def H(st):
+    """A setting kept only for its place in the saved list: no row in the menu."""
+    return dict(st, hidden=True)
 
 
 def N(id, tab, label, desc, lo, hi, step, unit, default):
@@ -71,15 +76,17 @@ SETTINGS = [
     T("dcjoin", "discord", "Post player joins and leaves", "Sends a short note each time a player connects or disconnects.", False),
     T("dcadmin", "discord", "Post admin actions", "Sends character edits, item grants and currency changes to the admin channel.", True),
     T("dcchat", "discord", "Mirror in-game chat", "Copies global chat messages into the Discord channel.", False),
-    T("chgod", "cheats", "God mode", "Your character takes no damage.", False),
-    T("chfly", "cheats", "Fly", "Move freely through the air and past obstacles.", False),
-    T("chstam", "cheats", "Infinite stamina", "Stamina never runs out.", False),
-    T("chneeds", "cheats", "No hunger or thirst", "Food and water stay full.", False),
-    T("chinvis", "cheats", "Invisible to players", "Players cannot see your character.", False),
-    N("chspeed", "cheats", "Move speed", "Scales how fast your character moves.", 1, 10, 1, "x", 1),
-    T("chcraft", "cheats", "Instant crafting", "Crafting finishes at once.", False),
-    T("chbuild", "cheats", "Build anywhere", "Ignore building limits and protected zones.", False),
-    T("chcd", "cheats", "Ignore command cooldowns", "Use /home and other commands without waiting.", False),
+    # the old Cheats settings: the cheats are each admin's own now (cheats_server), not server-wide
+    # settings. Hidden rows, kept for their places in the saved list
+    H(T("chgod", "cheats", "God mode", "Your character takes no damage.", False)),
+    H(T("chfly", "cheats", "Fly", "Move freely through the air and past obstacles.", False)),
+    H(T("chstam", "cheats", "Infinite stamina", "Stamina never runs out.", False)),
+    H(T("chneeds", "cheats", "No hunger or thirst", "Food and water stay full.", False)),
+    H(T("chinvis", "cheats", "Invisible to players", "Players cannot see your character.", False)),
+    H(N("chspeed", "cheats", "Move speed", "Scales how fast your character moves.", 1, 10, 1, "x", 1)),
+    H(T("chcraft", "cheats", "Instant crafting", "Crafting finishes at once.", False)),
+    H(T("chbuild", "cheats", "Build anywhere", "Ignore building limits and protected zones.", False)),
+    H(T("chcd", "cheats", "Ignore command cooldowns", "Use /home and other commands without waiting.", False)),
     T("tradeon", "trading", "Player trading enabled", "Lets players offer items to each other in a trade window.", True),
     N("tradedist", "trading", "Max distance between traders", "Both players must be this close, in metres, to start or keep a trade open.", 2, 50, 1, "m", 10),
     N("tradeslots", "trading", "Item slots per side", "How many different items each player can put into one trade.", 1, 24, 1, "", 12),
@@ -247,10 +254,19 @@ KIT_NAME_MAX = 24                         # characters
 CE_SELL_Q = (1, 40)   # NPC sell price, in quarters: 0.25x .. 10x
 CE_BUY_Q = (1, 16)    # NPC buy price: 0.25x .. 4x
 
+# Cheats (cheats_server, cheats_panel): (key, label, what it does). The move speed is separate
+# (x1..CH_SPEED_MAX). Fly, invisibility and instant crafting have no safe hook in the game.
+CHEATS = [
+    ("god", "God mode", "You take no damage."),
+    ("needs", "No hunger or thirst", "Food and water stop going down."),
+    ("stam", "Infinite stamina", "Your stamina stays full."),
+    ("free", "Free building", "Building pieces cost no materials."),
+]
+CH_SPEED_MAX = 5
+
 PANELS = {
     "access": ["Access log"],
     "trading": ["Trade log"],
     "scripting": ["Script editor and console"],
     "discord": ["Discord webhook"],
-    "cheats": ["Teleport", "Spawn items"],
 }

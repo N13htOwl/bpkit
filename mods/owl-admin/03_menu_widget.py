@@ -15,7 +15,10 @@ Close) | Gate (WidgetSwitcher):
                     (restart_panel.py, its own Save too), and the Players page kicks off bans and
                     teleports (players_panel.py): the footer below is hidden on all five.
                     The Kits page's settings are followed by the kits' names and items
-                    (kits_panel.py; items are added from the Item catalog)
+                    (kits_panel.py; items are added from the Item catalog). The Cheats page
+                    is the admin's own cheats (cheats_panel.py), so the footer is hidden there
+                    too. Settings marked hidden (menu_defs.H) get a collapsed row: they keep
+                    their place in the saved list
     2  SetupPage -- first-time "set admin password" form, while the server has no password
 | footer (status, Reset, Apply).
 
@@ -52,7 +55,7 @@ import os
 from bpkit import bridge as bp, ir, build, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
 for _m in ("oa_config", "umg_text", "menu_defs", "menu_shell", "ce_panel", "tm_catalog", "ce_catalog", "tm_cell",
-           "bug_panel", "hud_panel", "restart_panel", "restart_ctrl", "players_panel", "kits_panel"):
+           "bug_panel", "hud_panel", "restart_panel", "restart_ctrl", "players_panel", "kits_panel", "cheats_panel"):
     sys.modules.pop(_m, None)
 import oa_config as MOD
 import menu_defs as D
@@ -62,6 +65,7 @@ import hud_panel
 import restart_panel
 import players_panel
 import kits_panel
+import cheats_panel
 import ce_catalog
 import tm_cell
 from umg_text import Umg
@@ -155,7 +159,8 @@ def setting_rows(tab):
         u.strip(r + "_Acc", "#4a1a1d", u.margin(l=3))
         u.box("HorizontalBox", r + "_Row", [(r + "_Acc", ["VerticalAlignment=VAlign_Fill"]),
                                              (r + "_Fill", ["Size=(SizeRule=Fill)", "VerticalAlignment=VAlign_Fill"])])
-        u.border(r, "#2a1012", 1.0, u.margin(1, 1, 1, 1), r + "_Row")
+        u.border(r, "#2a1012", 1.0, u.margin(1, 1, 1, 1), r + "_Row",
+                 props=["Visibility=Collapsed"] if st.get("hidden") else ())
         items.append((r, ["Padding=%s" % u.margin(b=10)]))
     for i, panel in enumerate(D.PANELS.get(tab, [])):
         p = s.placeholder("Ph_%s_%d" % (tab, i), "%s: coming in a later step." % panel)
@@ -172,6 +177,8 @@ def setting_rows(tab):
         items += players_panel.admin_layout(u, B, R)
     if tab == "kits":
         items += kits_panel.admin_layout(u, B, R)
+    if tab == "cheats":
+        items += cheats_panel.admin_layout(u, B, R)
     return items
 
 
@@ -242,6 +249,7 @@ hud_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
 restart_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
 players_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
 kits_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
+cheats_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
 
 # ================================================================ graph
 GS = "/Script/Engine.GameplayStatics"
@@ -458,9 +466,15 @@ g.typed_input(on_players, "B", str([t for t, _ti, _h in D.TABS].index("players")
 hud_rs = g.call("BooleanOR", KML, pos=(6900, y0 - 850))   # the HUD and Server Restart pages save themselves
 g.wire(on_hud, "ReturnValue", hud_rs, "A", exec=False)
 g.wire(on_restart, "ReturnValue", hud_rs, "B", exec=False)
-own_save = g.call("BooleanOR", KML, pos=(6900, y0 - 700))      # and the Players page has nothing to apply
+on_cheats = g.call("EqualEqual_IntInt", KML, pos=(6700, y0 - 1050))
+g.wire(page_idx, "ReturnValue", on_cheats, "A", exec=False)
+g.typed_input(on_cheats, "B", str([t for t, _ti, _h in D.TABS].index("cheats")), "int")
+pl_ch = g.call("BooleanOR", KML, pos=(6900, y0 - 1000))
+g.wire(on_players, "ReturnValue", pl_ch, "A", exec=False)
+g.wire(on_cheats, "ReturnValue", pl_ch, "B", exec=False)
+own_save = g.call("BooleanOR", KML, pos=(6900, y0 - 700))      # and the Players / Cheats pages have nothing to apply
 g.wire(hud_rs, "ReturnValue", own_save, "A", exec=False)
-g.wire(on_players, "ReturnValue", own_save, "B", exec=False)
+g.wire(pl_ch, "ReturnValue", own_save, "B", exec=False)
 any_own = g.call("BooleanOR", KML, pos=(6900, y0 - 50))
 g.wire(either, "ReturnValue", any_own, "A", exec=False)
 g.wire(own_save, "ReturnValue", any_own, "B", exec=False)
@@ -496,7 +510,10 @@ _pl = ce_panel._Ctx(g, u, RELAY_CLS, owning_player)
 _pl_exits = players_panel.admin_tick(_pl, _rs_exits, (has, "ReturnValue"), (on_players, "ReturnValue"), y=170000)
 # then the Kits page's (its names and items; the controller found above)
 _kit = ce_panel._Ctx(g, u, RELAY_CLS, owning_player)
-for e, ep in kits_panel.admin_tick(_kit, _pl_exits, (has, "ReturnValue"), (gac, "ReturnValue"), CTRL_CLS, y=210000):
+_kit_exits = kits_panel.admin_tick(_kit, _pl_exits, (has, "ReturnValue"), (gac, "ReturnValue"), CTRL_CLS, y=210000)
+# then the Cheats page's
+_chp = ce_panel._Ctx(g, u, RELAY_CLS, owning_player)
+for e, ep in cheats_panel.admin_tick(_chp, _kit_exits, (has, "ReturnValue"), (on_cheats, "ReturnValue"), y=280000):
     g.wire(e, ep, bSync, "execute")
 ce_panel.clicks(g, u, RELAY_CLS, owning_player)
 bug_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 80000)
@@ -506,6 +523,7 @@ players_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 180000
 players_panel.admin_events(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 200000)
 kits_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 240000)
 kits_panel.catalog_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 270000)
+cheats_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 290000)
 g.wire(both, "ReturnValue", bSync, "Condition", exec=False)
 
 

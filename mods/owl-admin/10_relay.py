@@ -58,6 +58,10 @@ PlMsg / PlMsgVer come from players_server.py.
 Kits (03 admin, 07 players): OwlServerKit* / OwlClientKit* and their Kit* / SvKit* come from
 kits_server.py; the kits themselves are the controller's (02, kits_ctrl).
 
+Cheats (03, the admin's own): OwlServerChSet / OwlServerChGet / OwlClientCh and their Ch* come from
+cheats_server.py, and so do two more tick steps: the server's (after TmPawn: the cheats onto the
+owner's character, off when admin mode locks) and the owner's client's (its move speed).
+
 Run with Play STOPPED, after 02 (which creates the empty asset so it can spawn it) and 08:
     python ue_run.py mods/owl-admin/10_relay.py
 """
@@ -70,7 +74,7 @@ import unreal
 import os
 from bpkit import bridge as bp, ir, build, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
-for _m in ("oa_config", "oa_auth", "menu_defs", "ce_panel", "ce_server", "bug_server", "hud_server", "restart_server", "pet_server", "players_server", "kits_server"):
+for _m in ("oa_config", "oa_auth", "menu_defs", "ce_panel", "ce_server", "bug_server", "hud_server", "restart_server", "pet_server", "players_server", "kits_server", "cheats_server"):
     sys.modules.pop(_m, None)
 import types
 import oa_config as MOD
@@ -82,6 +86,7 @@ import restart_server
 import pet_server
 import players_server
 import kits_server
+import cheats_server
 from oa_auth import Auth
 
 assert not unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).is_in_play_in_editor(), \
@@ -148,6 +153,8 @@ CE_VARS += pet_server.variables(unreal, bel, unreal.load_object(None, MOD.full(P
 CE_VARS += players_server.variables(unreal, bel)
 # Kits (kits_server)
 CE_VARS += kits_server.variables(unreal, bel)
+# Cheats (cheats_server)
+CE_VARS += cheats_server.variables(unreal, bel, unreal.load_object(None, MOD.full(PKG, MOD.CE_SAVEGAME) + "_C"))
 for var, vtype in CE_VARS:
     bel.add_member_variable(bp_obj, var, vtype)
     bel.set_blueprint_variable_replication(bp_obj, var, REPL.NONE)
@@ -542,7 +549,13 @@ g.wire(setAsked, "then", ask, "execute")
 
 dds = g.call("IsDedicatedServer", KSL, pos=(1700, Y + 250))
 bScreen = g.branch(pos=(1700, Y))
-for e, ep in ((setPawn, "then"), (pcCast, "CastFailed"), (ask, "then"), (bAsk, "else"), (askCast, "CastFailed")):
+# the cheats (cheats_server): the server's step, then the owner's client's
+_ch = types.SimpleNamespace(
+    g=g, self_call=self_call, owner_pc=owner_pc, save_slot=save_slot, Auth=Auth, MOD=MOD, PKG=PKG,
+    CTRL_CLS=CTRL_CLS, SG_CLS=SG_CLS, RUN_ON_SERVER=RUN_ON_SERVER, RUN_ON_OWNING_CLIENT=RUN_ON_OWNING_CLIENT)
+_ch_exits = (cheats_server.tick(_ch, [(setPawn, "then")], (pcCast, "AsController"), 106000)
+             + cheats_server.client_tick(_ch, [(ask, "then"), (bAsk, "else")], 110000))
+for e, ep in _ch_exits + [(pcCast, "CastFailed"), (askCast, "CastFailed")]:
     g.wire(e, ep, bScreen, "execute")
 g.wire(dds, "ReturnValue", bScreen, "Condition", exec=False)
 pawnCast = g.cast(CHAR_CLS, pos=(2000, Y))
@@ -728,6 +741,11 @@ EVENTS.update(kits_server.build(types.SimpleNamespace(
     g=g, self_call=self_call, owner_pc=owner_pc, save_slot=save_slot, Auth=Auth, MOD=MOD, PKG=PKG,
     CTRL_CLS=CTRL_CLS, SG_CLS=SG_CLS, RUN_ON_SERVER=RUN_ON_SERVER, RUN_ON_OWNING_CLIENT=RUN_ON_OWNING_CLIENT),
     y0=84000))
+# ---------------------------------------------------------------- Cheats (admin menu 03)
+EVENTS.update(cheats_server.build(types.SimpleNamespace(
+    g=g, self_call=self_call, owner_pc=owner_pc, save_slot=save_slot, Auth=Auth, MOD=MOD, PKG=PKG,
+    CTRL_CLS=CTRL_CLS, SG_CLS=SG_CLS, RUN_ON_SERVER=RUN_ON_SERVER, RUN_ON_OWNING_CLIENT=RUN_ON_OWNING_CLIENT),
+    y0=100000))
 
 # Clear + compile first, or a rebuild renames the pasted events (see 02)
 bel.compile_blueprint(bp_obj)
@@ -771,6 +789,7 @@ for var in ("TmLook", "TmPawn", "TmOutfitNames", "TmOutfitLooks", "TmClientVer",
         tuple(v for v, _t in CE_VARS):
     cdo.get_editor_property(var)                               # raises if remove_unused_variables took it
 pet_server.defaults(cdo)                                     # what each pet costs: server side only
+cheats_server.defaults(cdo)                                  # all off; the cheats' names for the log
 cdo.set_editor_property("replicates", True)
 cdo.set_editor_property("only_relevant_to_owner", False)     # everyone sees everyone's look
 cdo.set_editor_property("always_relevant", True)
