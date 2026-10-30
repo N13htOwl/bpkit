@@ -25,7 +25,7 @@ faster isn't corrected back by the client's own movement.
 """
 from bpkit import ir
 import menu_defs as D
-from ce_server import helpers, T, KML, KSTR, GS, CHAR, PSTATE
+from ce_server import helpers, T, KML, KSTR, GS, CHAR, CPC, PSTATE
 from ce_panel import _Ctx
 
 N = len(D.CHEATS)
@@ -80,6 +80,58 @@ def _any(c, imath, pos):
                                               (x + 1200, y + 300))}, (x + 1400, y))
 
 
+def admin_log(R, h, prev, oc, parts, pos):
+    """SvLine = parts (time | admin | ...), added to the admin's own OwlCe save (made if missing,
+    at most CE_LOG_MAX lines); oc: the admin's controller cast. Uses the relay's SvChSlot /
+    SvChSave (cheats_server.variables), so any relay event can log with it. Returns the exec out."""
+    g, MOD = R.g, R.MOD
+    CE_SG = MOD.full(R.PKG, MOD.CE_SAVEGAME) + "_C"
+    T.setdefault("cesave", ("object", ir.obj_path(CE_SG)))
+    x, y = pos
+    p = h.set_line(prev, oc, parts, (x, y))
+    slot = R.save_slot(oc, (x + 1500, y + 900), prefix=MOD.CE_SLOT_PREFIX)
+    p = h.setv(p, "SvChSlot", "string", (slot, "ReturnValue"), (x + 1700, y))
+    sc, missing = h.load([p], h.get("SvChSlot", "string", (x + 1900, y + 900)), CE_SG, (x + 2000, y))
+    have = h.setv((sc, "then"), "SvChSave", "cesave", (sc, h.save_as(CE_SG)), (x + 2900, y))
+    crt = g.call("CreateSaveGameObject", GS, pos=(x + 2600, y + 600))
+    cp = crt.pin("SaveGameClass").typed("class", ir.obj_path("/Script/Engine.SaveGame"), direction="EGPD_Input")
+    cp.set("PinType.bIsUObjectWrapper", "True")
+    cp.set("DefaultObject", '"%s"' % CE_SG)
+    crt.pin("ReturnValue").typed("object", ir.obj_path(CE_SG), direction="EGPD_Output")
+    for e, ep in missing:
+        g.wire(e, ep, crt, "execute")
+    made = h.setv((crt, "then"), "SvChSave", "cesave", (crt, "ReturnValue"), (x + 2900, y + 600))
+    save = lambda pos: h.get("SvChSave", "cesave", pos)
+
+    def log_arr(pos):
+        lg = g.var_get("Log", "string", parent=CE_SG, pos=pos)
+        lg.pin("Log").set("PinType.ContainerType", "Array")
+        g.wire(*save((pos[0] - 200, pos[1])), lg, "self", exec=False)
+        return lg
+
+    add = g.array_fn("Array_Add", pos=(x + 3200, y), elem_cat="string")
+    g.array_item_pin(add, "NewItem", "string")
+    g.wire(log_arr((x + 3200, y + 300)), "Log", add, "TargetArray", exec=False)
+    g.wire(*h.get("SvLine", "string", (x + 3200, y + 450)), add, "NewItem", exec=False)
+    for e in (have, made):
+        g.wire(e[0], e[1], add, "execute")
+    over = h.op("Greater_IntInt", (g.array_len(log_arr((x + 3500, y + 600)), "Log", (x + 3700, y + 600),
+                                               elem_cat="string"), "ReturnValue"), str(MOD.CE_LOG_MAX),
+                (x + 3900, y + 600))
+    bo = h.branch((add, "then"), over, (x + 3500, y))
+    rm = g.array_fn("Array_Remove", pos=(x + 3800, y), elem_cat="string")
+    rm.pin("IndexToRemove").typed("int", direction="EGPD_Input").literal("0")
+    g.wire(log_arr((x + 3800, y + 300)), "Log", rm, "TargetArray", exec=False)
+    g.wire(bo, "then", rm, "execute")
+    sav = g.call("SaveGameToSlot", GS, pos=(x + 4100, y))
+    g.wire(*save((x + 3900, y + 300)), sav, "SaveGameObject", exec=False)
+    g.wire(*h.get("SvChSlot", "string", (x + 3900, y + 450)), sav, "SlotName", exec=False)
+    g.typed_input(sav, "UserIndex", "0", "int")
+    for e, ep in ((rm, "then"), (bo, "else")):
+        g.wire(e, ep, sav, "execute")
+    return (sav, "then")
+
+
 def build(R, y0):
     """Add the cheat events to R.g from y0 down (R as for ce_server.build). Returns {event: net flags}."""
     g, MOD = R.g, R.MOD
@@ -100,52 +152,7 @@ def build(R, y0):
             g.wire(e, ep, call, "execute")
         return call
 
-    def log(prev, oc, parts, pos):
-        """SvLine = parts (time | admin | ...), added to the admin's own OwlCe save (made if
-        missing, at most CE_LOG_MAX lines). Returns the exec out."""
-        x, y = pos
-        p = h.set_line(prev, oc, parts, (x, y))
-        slot = R.save_slot(oc, (x + 1500, y + 900), prefix=MOD.CE_SLOT_PREFIX)
-        p = h.setv(p, "SvChSlot", "string", (slot, "ReturnValue"), (x + 1700, y))
-        sc, missing = h.load([p], h.get("SvChSlot", "string", (x + 1900, y + 900)), CE_SG, (x + 2000, y))
-        have = h.setv((sc, "then"), "SvChSave", "cesave", (sc, h.save_as(CE_SG)), (x + 2900, y))
-        crt = g.call("CreateSaveGameObject", GS, pos=(x + 2600, y + 600))
-        cp = crt.pin("SaveGameClass").typed("class", ir.obj_path("/Script/Engine.SaveGame"), direction="EGPD_Input")
-        cp.set("PinType.bIsUObjectWrapper", "True")
-        cp.set("DefaultObject", '"%s"' % CE_SG)
-        crt.pin("ReturnValue").typed("object", ir.obj_path(CE_SG), direction="EGPD_Output")
-        for e, ep in missing:
-            g.wire(e, ep, crt, "execute")
-        made = h.setv((crt, "then"), "SvChSave", "cesave", (crt, "ReturnValue"), (x + 2900, y + 600))
-        save = lambda pos: h.get("SvChSave", "cesave", pos)
-
-        def log_arr(pos):
-            lg = g.var_get("Log", "string", parent=CE_SG, pos=pos)
-            lg.pin("Log").set("PinType.ContainerType", "Array")
-            g.wire(*save((pos[0] - 200, pos[1])), lg, "self", exec=False)
-            return lg
-
-        add = g.array_fn("Array_Add", pos=(x + 3200, y), elem_cat="string")
-        g.array_item_pin(add, "NewItem", "string")
-        g.wire(log_arr((x + 3200, y + 300)), "Log", add, "TargetArray", exec=False)
-        g.wire(*h.get("SvLine", "string", (x + 3200, y + 450)), add, "NewItem", exec=False)
-        for e in (have, made):
-            g.wire(e[0], e[1], add, "execute")
-        over = h.op("Greater_IntInt", (g.array_len(log_arr((x + 3500, y + 600)), "Log", (x + 3700, y + 600),
-                                                   elem_cat="string"), "ReturnValue"), str(MOD.CE_LOG_MAX),
-                    (x + 3900, y + 600))
-        bo = h.branch((add, "then"), over, (x + 3500, y))
-        rm = g.array_fn("Array_Remove", pos=(x + 3800, y), elem_cat="string")
-        rm.pin("IndexToRemove").typed("int", direction="EGPD_Input").literal("0")
-        g.wire(log_arr((x + 3800, y + 300)), "Log", rm, "TargetArray", exec=False)
-        g.wire(bo, "then", rm, "execute")
-        sav = g.call("SaveGameToSlot", GS, pos=(x + 4100, y))
-        g.wire(*save((x + 3900, y + 300)), sav, "SaveGameObject", exec=False)
-        g.wire(*h.get("SvChSlot", "string", (x + 3900, y + 450)), sav, "SlotName", exec=False)
-        g.typed_input(sav, "UserIndex", "0", "int")
-        for e, ep in ((rm, "then"), (bo, "else")):
-            g.wire(e, ep, sav, "execute")
-        return (sav, "then")
+    log = lambda prev, oc, parts, pos: admin_log(R, h, prev, oc, parts, pos)
 
     # ---- set one cheat
     y = y0
@@ -258,7 +265,11 @@ def tick(R, prevs, ctl, y0):
     g.wire(*h.get("ChSpeed", "int", (x + 3100 + 300 * N, y + 1050)), call, "Speed", exec=False)
     h.wire_in(LOCKED, call, "Msg", "string")
     c.go(call)
-    c.exits = after + c.exits
+    cpc = g.cast(CPC, pos=(x + 3600 + 300 * N, y + 600))           # and a line in their admin log
+    g.wire(ctl[0], ctl[1], cpc, "Object", exec=False)
+    c.go(cpc)
+    logged = admin_log(R, h, (cpc, "then"), cpc, ["Cheats turned off: admin mode locked"], (x + 3900 + 300 * N, y + 600))
+    c.exits = after + [logged, (cpc, "CastFailed")]
     # the owner's character
     x = 4800 + 300 * N
     pawn = g.call("K2_GetPawn", CTRL, pos=(x, y + 300))

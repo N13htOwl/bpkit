@@ -37,6 +37,8 @@ Equipment tab: gear_panel.py -- what the player really wears per slot (read from
 character's CharacterLayout), with the item table's armor; read only.
 Kits tab: kits_panel.py -- the kits the admins set up (names, items) and when each can be
 claimed again; Claim asks the server (kits_server: cooldown, room in the inventory).
+Trade tab: trade_panel.py -- players near you, requests, both offers, coins, Confirm, and the
+backpack to offer from; every step is a server event (trade_server).
 
 All the player tabs are built.
 Parent class WindowRoot + the OwlPlayerMenu row (06) make it a GUIModule like the admin menu.
@@ -51,7 +53,7 @@ import unreal
 import os
 from bpkit import bridge as bp, ir, build, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
-for _m in ("oa_config", "umg_text", "menu_defs", "menu_shell", "tm_catalog", "tm_cell", "ce_panel", "bug_panel", "pet_panel", "mask_panel", "gear_panel", "kits_panel"):
+for _m in ("oa_config", "umg_text", "menu_defs", "menu_shell", "tm_catalog", "tm_cell", "ce_panel", "bug_panel", "pet_panel", "mask_panel", "gear_panel", "kits_panel", "trade_panel"):
     sys.modules.pop(_m, None)
 import oa_config as MOD
 import menu_defs as D
@@ -63,6 +65,7 @@ import pet_panel
 import mask_panel
 import gear_panel
 import kits_panel
+import trade_panel
 SWITCHER = "/Script/UMG.WidgetSwitcher"
 from umg_text import Umg
 from menu_shell import Shell, button, button_style, framed, clicked, scroll_style
@@ -87,7 +90,7 @@ N_OUT = MOD.TM_MAX_OUTFITS
 u = Umg(MOD.BOARD_SCALE)
 B, R = MOD.FONT_BOLD, MOD.FONT_REGULAR
 s = Shell(u, "PLAYER MENU", D.PLAYER_TABS, MOD.PLAYER_MODULE, (B, R),
-          badge="PLAYER", status="Transmog, Pet Shop, Animal Masks, Equipment, Kits and Bug Report are ready.")
+          badge="PLAYER", status="Transmog, Pet Shop, Animal Masks, Equipment, Kits, Trade and Bug Report are ready.")
 s.header(logo=MOD.full(PKG, MOD.LOGO_TEX))
 s.sidebar()
 
@@ -236,6 +239,8 @@ def page(tab):
         return pet_panel.player_layout(u, B, R)
     if tab == "kits":
         return kits_panel.player_layout(u, B, R)
+    if tab == "trade":
+        return trade_panel.player_layout(u, B, R)
     if tab == "bugreport":
         return bug_panel.player_layout(u, B, R)
     title = dict((t, ti) for t, ti, _h in D.PLAYER_TABS)[tab]
@@ -262,6 +267,7 @@ pet_panel.player_variables(unreal, bel, wbp)
 mask_panel.player_variables(unreal, bel, wbp)
 gear_panel.player_variables(unreal, bel, wbp)
 kits_panel.player_variables(unreal, bel, wbp)
+trade_panel.player_variables(unreal, bel, wbp)
 bel.compile_blueprint(wbp)
 
 # ================================================================ graph
@@ -810,6 +816,12 @@ _kon = _bug.fn("EqualEqual_IntInt", KML, {"A": (_kidx, "ReturnValue"),
                (2600, 85200))
 kits_panel.player_tick(_bug, (_lg, "ReturnValue"), CTRL_CLS, _kon, 85000)
 _bug.exits += _no_ctl
+# then the Trade tab's (no controller needed)
+_tidx = g.call("GetActiveWidgetIndex", SWITCHER, pos=(0, 119700))
+g.wire(g.var_get("TabPages", "object", ir.obj_path(SWITCHER), pos=(-200, 119700)), "TabPages", _tidx, "self", exec=False)
+_ton = _bug.fn("EqualEqual_IntInt", KML, {"A": (_tidx, "ReturnValue"),
+                                          "B": (str([t for t, _ti, _h in D.PLAYER_TABS].index("trade")), "int")}, (200, 119700))
+trade_panel.player_tick(_bug, _ton, 120000)
 bug_panel.player_clicks(ce_panel._Ctx(g, u, RELAY_CLS, lambda pos: g.call("GetOwningPlayer", UW, pos=pos),
                                       relay_var="MyRelay"), 50000)
 pet_panel.player_clicks(ce_panel._Ctx(g, u, RELAY_CLS, lambda pos: g.call("GetOwningPlayer", UW, pos=pos),
@@ -818,6 +830,8 @@ mask_panel.player_clicks(ce_panel._Ctx(g, u, RELAY_CLS, lambda pos: g.call("GetO
                                        relay_var="MyRelay"), 65000)
 kits_panel.player_clicks(ce_panel._Ctx(g, u, RELAY_CLS, lambda pos: g.call("GetOwningPlayer", UW, pos=pos),
                                        relay_var="MyRelay"), 95000)
+trade_panel.player_clicks(ce_panel._Ctx(g, u, RELAY_CLS, lambda pos: g.call("GetOwningPlayer", UW, pos=pos),
+                                        relay_var="MyRelay"), 130000)
 
 # Clear + compile first, or a rebuild renames the pasted OwlTmPick event (see 02); 11 then
 # rebuilds the cell, whose call to it went stale

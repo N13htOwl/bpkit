@@ -16,8 +16,8 @@ Close) | Gate (WidgetSwitcher):
                     teleports (players_panel.py): the footer below is hidden on all five.
                     The Kits page's settings are followed by the kits' names and items
                     (kits_panel.py; items are added from the Item catalog). The Cheats page
-                    is the admin's own cheats (cheats_panel.py), so the footer is hidden there
-                    too. Settings marked hidden (menu_defs.H) get a collapsed row: they keep
+                    is the admin's own cheats (cheats_panel.py) and the Scripting page the
+                    command scripts (scripts_panel.py) and the NPCs page the placed NPCs (npc_panel.py), so the footer is hidden there too. Settings marked hidden (menu_defs.H) get a collapsed row: they keep
                     their place in the saved list
     2  SetupPage -- first-time "set admin password" form, while the server has no password
 | footer (status, Reset, Apply).
@@ -55,7 +55,7 @@ import os
 from bpkit import bridge as bp, ir, build, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
 for _m in ("oa_config", "umg_text", "menu_defs", "menu_shell", "ce_panel", "tm_catalog", "ce_catalog", "tm_cell",
-           "bug_panel", "hud_panel", "restart_panel", "restart_ctrl", "players_panel", "kits_panel", "cheats_panel"):
+           "bug_panel", "hud_panel", "restart_panel", "restart_ctrl", "players_panel", "kits_panel", "cheats_panel", "scripts_panel", "trade_panel", "npc_panel"):
     sys.modules.pop(_m, None)
 import oa_config as MOD
 import menu_defs as D
@@ -66,6 +66,9 @@ import restart_panel
 import players_panel
 import kits_panel
 import cheats_panel
+import scripts_panel
+import trade_panel
+import npc_panel
 import ce_catalog
 import tm_cell
 from umg_text import Umg
@@ -179,6 +182,12 @@ def setting_rows(tab):
         items += kits_panel.admin_layout(u, B, R)
     if tab == "cheats":
         items += cheats_panel.admin_layout(u, B, R)
+    if tab == "scripting":
+        items += scripts_panel.admin_layout(u, B, R)
+    if tab == "trading":
+        items += trade_panel.admin_layout(u, B, R)
+    if tab == "npcs":
+        items += npc_panel.admin_layout(u, B, R)
     return items
 
 
@@ -250,6 +259,9 @@ restart_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
 players_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
 kits_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
 cheats_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
+scripts_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
+trade_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
+npc_panel.admin_variables(unreal, unreal.BlueprintEditorLibrary, wbp)
 
 # ================================================================ graph
 GS = "/Script/Engine.GameplayStatics"
@@ -469,9 +481,21 @@ g.wire(on_restart, "ReturnValue", hud_rs, "B", exec=False)
 on_cheats = g.call("EqualEqual_IntInt", KML, pos=(6700, y0 - 1050))
 g.wire(page_idx, "ReturnValue", on_cheats, "A", exec=False)
 g.typed_input(on_cheats, "B", str([t for t, _ti, _h in D.TABS].index("cheats")), "int")
+on_scripts = g.call("EqualEqual_IntInt", KML, pos=(6700, y0 - 1200))
+g.wire(page_idx, "ReturnValue", on_scripts, "A", exec=False)
+g.typed_input(on_scripts, "B", str([t for t, _ti, _h in D.TABS].index("scripting")), "int")
+on_npcs = g.call("EqualEqual_IntInt", KML, pos=(6700, y0 - 1500))
+g.wire(page_idx, "ReturnValue", on_npcs, "A", exec=False)
+g.typed_input(on_npcs, "B", str([t for t, _ti, _h in D.TABS].index("npcs")), "int")
+sc_np = g.call("BooleanOR", KML, pos=(6900, y0 - 1300))
+g.wire(on_scripts, "ReturnValue", sc_np, "A", exec=False)
+g.wire(on_npcs, "ReturnValue", sc_np, "B", exec=False)
+ch_sc = g.call("BooleanOR", KML, pos=(6900, y0 - 1150))
+g.wire(on_cheats, "ReturnValue", ch_sc, "A", exec=False)
+g.wire(sc_np, "ReturnValue", ch_sc, "B", exec=False)
 pl_ch = g.call("BooleanOR", KML, pos=(6900, y0 - 1000))
 g.wire(on_players, "ReturnValue", pl_ch, "A", exec=False)
-g.wire(on_cheats, "ReturnValue", pl_ch, "B", exec=False)
+g.wire(ch_sc, "ReturnValue", pl_ch, "B", exec=False)
 own_save = g.call("BooleanOR", KML, pos=(6900, y0 - 700))      # and the Players / Cheats pages have nothing to apply
 g.wire(hud_rs, "ReturnValue", own_save, "A", exec=False)
 g.wire(pl_ch, "ReturnValue", own_save, "B", exec=False)
@@ -513,7 +537,19 @@ _kit = ce_panel._Ctx(g, u, RELAY_CLS, owning_player)
 _kit_exits = kits_panel.admin_tick(_kit, _pl_exits, (has, "ReturnValue"), (gac, "ReturnValue"), CTRL_CLS, y=210000)
 # then the Cheats page's
 _chp = ce_panel._Ctx(g, u, RELAY_CLS, owning_player)
-for e, ep in cheats_panel.admin_tick(_chp, _kit_exits, (has, "ReturnValue"), (on_cheats, "ReturnValue"), y=280000):
+_chp_exits = cheats_panel.admin_tick(_chp, _kit_exits, (has, "ReturnValue"), (on_cheats, "ReturnValue"), y=280000)
+# then the Scripting page's
+_scp = ce_panel._Ctx(g, u, RELAY_CLS, owning_player)
+_scp_exits = scripts_panel.admin_tick(_scp, _chp_exits, (has, "ReturnValue"), (on_scripts, "ReturnValue"), y=300000)
+# then the Trading page's log
+on_trading = g.call("EqualEqual_IntInt", KML, pos=(6700, y0 - 1350))
+g.wire(page_idx, "ReturnValue", on_trading, "A", exec=False)
+g.typed_input(on_trading, "B", str([t for t, _ti, _h in D.TABS].index("trading")), "int")
+_trp = ce_panel._Ctx(g, u, RELAY_CLS, owning_player)
+_trp_exits = trade_panel.admin_tick(_trp, _scp_exits, (has, "ReturnValue"), (on_trading, "ReturnValue"), y=340000)
+# then the NPCs page's
+_npp = ce_panel._Ctx(g, u, RELAY_CLS, owning_player)
+for e, ep in npc_panel.admin_tick(_npp, _trp_exits, (has, "ReturnValue"), (on_npcs, "ReturnValue"), y=380000):
     g.wire(e, ep, bSync, "execute")
 ce_panel.clicks(g, u, RELAY_CLS, owning_player)
 bug_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 80000)
@@ -524,6 +560,9 @@ players_panel.admin_events(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 200000
 kits_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 240000)
 kits_panel.catalog_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 270000)
 cheats_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 290000)
+scripts_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 320000)
+trade_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 360000)
+npc_panel.admin_clicks(ce_panel._Ctx(g, u, RELAY_CLS, owning_player), 420000)
 g.wire(both, "ReturnValue", bSync, "Condition", exec=False)
 
 

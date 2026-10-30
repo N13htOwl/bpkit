@@ -16,11 +16,12 @@ TABS = [
     ("characters", "Characters", "Fix levels, stats and points"),
     ("commands", "Commands", "Player chat commands and cooldowns"),
     ("kits", "Kits", "Item bundles players claim in the player menu (Shift+I)"),
-    ("trading", "Trading", "Rules for players trading items with each other"),
+    ("trading", "Trading", "Players trade in the player menu (Shift+I). The log is below"),
+    ("npcs", "NPCs", "Placed NPCs players talk to and buy from (press E on them)"),
     ("pets", "Pets", "Custom pets players can buy"),
     ("hud", "HUD", "What every player sees on screen"),
     ("restart", "Server Restart", "Warn players before a restart"),
-    ("scripting", "Scripting", "Write and run admin scripts"),
+    ("scripting", "Scripting", "Command scripts and a console, run as you"),
     ("discord", "Discord", "Send server events to a Discord channel"),
     ("cheats", "Cheats", "Powers for your own character while in admin mode. Every change is logged"),
 ]
@@ -89,15 +90,16 @@ SETTINGS = [
     H(T("chcd", "cheats", "Ignore command cooldowns", "Use /home and other commands without waiting.", False)),
     T("tradeon", "trading", "Player trading enabled", "Lets players offer items to each other in a trade window.", True),
     N("tradedist", "trading", "Max distance between traders", "Both players must be this close, in metres, to start or keep a trade open.", 2, 50, 1, "m", 10),
-    N("tradeslots", "trading", "Item slots per side", "How many different items each player can put into one trade.", 1, 24, 1, "", 12),
+    N("tradeslots", "trading", "Item slots per side", "How many stacks each player can put into one trade.", 1, 12, 1, "", 12),
     N("tradecd", "trading", "Trade cooldown", "Seconds a player must wait before starting another trade.", 0, 600, 10, "s", 30),
     N("tradetimeout", "trading", "Trade request timeout", "Seconds the other player has to accept before the request expires.", 10, 120, 5, "s", 30),
-    T("tradecur", "trading", "Allow currency in trades", "Players may put coins or other currency into a trade.", True),
-    T("tradeblock", "trading", "Block restricted items", "Items on the restricted list cannot be traded.", True),
-    T("tradeconfirm", "trading", "Require both players to confirm", "Both players must press Confirm after the final offer. Changing an offer clears both confirmations.", True),
-    T("tradeclan", "trading", "Clan members only", "Players can only trade with members of their own clan.", False),
-    T("tradecombat", "trading", "Block trading in combat", "Trading is refused for a short time after taking or dealing damage.", True),
-    T("tradelog", "trading", "Log every trade", "Records who traded what, and when, for admins to review.", True),
+    T("tradecur", "trading", "Allow coins in trades", "Players may put Owl coins (their Owl wallet) into a trade.", True),
+    # hidden: no restricted item list, confirming is always required, no readable clan or combat state
+    H(T("tradeblock", "trading", "Block restricted items", "Items on the restricted list cannot be traded.", True)),
+    H(T("tradeconfirm", "trading", "Require both players to confirm", "Both players must press Confirm after the final offer. Changing an offer clears both confirmations.", True)),
+    H(T("tradeclan", "trading", "Clan members only", "Players can only trade with members of their own clan.", False)),
+    H(T("tradecombat", "trading", "Block trading in combat", "Trading is refused for a short time after taking or dealing damage.", True)),
+    T("tradelog", "trading", "Log every trade", "Records who traded what, and when, in the trade log below.", True),
     T("peton", "pets", "Pet shop enabled", "Players can open the pet shop and buy companion pets with coins.", True),
     N("petmax", "pets", "Pets owned per player", "Most pets one player can own at a time.", 1, 8, 1, "", 3),
     N("petactive", "pets", "Pets out at once", "How many owned pets a player can summon together.", 1, 3, 1, "", 1),
@@ -105,7 +107,7 @@ SETTINGS = [
     T("petsell", "pets", "Allow selling pets back", "Players get part of the price back when they release a pet.", False),
     T("petdie", "pets", "Pets can die", "A pet that is killed must be bought again. When off, it only has to be summoned again after a short wait.", False),
     T("petlog", "pets", "Log pet purchases", "Records who bought which pet, and when.", True),
-    T("tradeadmin", "trading", "Post trades to this menu", "Each finished trade appears in the trade log below, and online admins get a notice.", True),
+    H(T("tradeadmin", "trading", "Post trades to this menu", "Each finished trade appears in the trade log below, and online admins get a notice.", True)),
     T("kitson", "kits", "Kits", "Lets players claim kits in the player menu's Kits tab.", True),
     # was "kitcombat" (Block /kits in combat): Conan has no in-combat state for players. Same place in
     # the list, so a saved value stays where it is read
@@ -153,6 +155,7 @@ PLAYER_TABS = [
     ("masks", "Animal Masks", "Wear an animal mask"),
     ("equipment", "Equipment", "Your gear and armor"),
     ("kits", "Kits", "Claim the kits the admins set up"),
+    ("trade", "Trade", "Swap items with a player near you"),
     ("bugreport", "Bug Report", "Tell the admins about a problem"),
 ]
 
@@ -251,6 +254,23 @@ N_KITS = 3
 KIT_NAMES = ["Kit 1", "Kit 2", "Kit 3"]   # until an admin renames them
 KIT_MAX_ITEMS = 12                        # entries per kit
 KIT_NAME_MAX = 24                         # characters
+N_SCRIPTS = 5                             # the Scripting tab's command scripts
+SCRIPT_LINES = 8                          # one console command each
+SCRIPT_NAME_MAX = 24                      # characters
+TRADE_MAX = 12                            # stacks per side of a trade (the tradeslots setting's top)
+TRADE_BAG_ROWS = 40                       # backpack rows the Trade tab lists
+TRADE_NEAR_ROWS = 8                       # nearby players it lists
+TRADE_LOG_MAX = 200                       # lines kept in OwlTrades
+TRADE_LOG_ROWS = 30                       # lines the admin Trading page shows (newest first)
+# NPCs (npc_server, 14_npc, the NPC window and the admin NPC editor)
+N_NPCS = 6                                # custom NPCs on a server
+NPC_WARES = 8                             # wares per NPC
+NPC_GEAR = 20                             # equipment slots copied from the placing admin (0..NPC_GEAR-1)
+NPC_NAME_MAX = 24                         # characters, name and role
+NPC_LINE_MAX = 200                        # characters of dialogue
+NPC_TALK_DIST = 500                       # cm: how close a player must be to buy
+NPC_CURRENCIES = [("Gold Coin", 11066), ("Silver Coin", 11065)]   # what wares are priced in (item ids)
+NPC_PRICE_MAX = 1000000
 CE_SELL_Q = (1, 40)   # NPC sell price, in quarters: 0.25x .. 10x
 CE_BUY_Q = (1, 16)    # NPC buy price: 0.25x .. 4x
 
@@ -266,7 +286,5 @@ CH_SPEED_MAX = 5
 
 PANELS = {
     "access": ["Access log"],
-    "trading": ["Trade log"],
-    "scripting": ["Script editor and console"],
     "discord": ["Discord webhook"],
 }

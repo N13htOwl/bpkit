@@ -23,6 +23,14 @@
                                                 EQty, ENames (the item's name, for the menus)
     BP_OwlKitClaimSave (slot OwlKit_<net id>, one per player)  Last: per kit, the minute (Unix time /
                                                 60) the player last claimed it, 0 = never
+    BP_OwlScriptsSave  (slot OwlScripts)        Names: one per script; Lines: menu_defs.SCRIPT_LINES per
+                                                script (the Scripting tab's command scripts)
+    BP_OwlTradeSave    (slot OwlTrades)         Log: the finished trades, newest last (the Trading tab)
+    BP_OwlNpcSave      (slot OwlNpcs)           per NPC (menu_defs.N_NPCS): Names, Roles, Lines (what it
+                                                says), Locs ("x|y|z|yaw", "" = not placed); Gear: NPC_GEAR
+                                                equipment item ids per NPC (0 = empty); per ware
+                                                (NPC_WARES per NPC): WIds, WPrice, WCur (NPC_CURRENCIES
+                                                index), WOn (1/0)
 
 Password: written by `dc OwlSetPassword <password>` (Conan admins only) and read by
 `dc OwlLogin`. Settings: written by `dc OwlApply ...` (the menu's APPLY) and read by the
@@ -66,7 +74,13 @@ for name, variables in ((MOD.SAVEGAME, [("Password", string_t, "")]),
                         (MOD.KITS_SAVEGAME, [("Names", strings_t, []), ("EKit", bel.get_array_type(int_t), []),
                                              ("EIds", bel.get_array_type(int_t), []),
                                              ("EQty", bel.get_array_type(int_t), []), ("ENames", strings_t, [])]),
-                        (MOD.KITCLAIM_SAVEGAME, [("Last", bel.get_array_type(int_t), [])])):
+                        (MOD.KITCLAIM_SAVEGAME, [("Last", bel.get_array_type(int_t), [])]),
+                        (MOD.SCRIPTS_SAVEGAME, [("Names", strings_t, []), ("Lines", strings_t, [])]),
+                        (MOD.TRADES_SAVEGAME, [("Log", strings_t, [])]),
+                        (MOD.NPC_SAVEGAME, [("Names", strings_t, []), ("Roles", strings_t, []), ("Lines", strings_t, []),
+                                            ("Locs", strings_t, []), ("Gear", bel.get_array_type(int_t), []),
+                                            ("WIds", bel.get_array_type(int_t), []), ("WPrice", bel.get_array_type(int_t), []),
+                                            ("WCur", bel.get_array_type(int_t), []), ("WOn", bel.get_array_type(int_t), [])])):
     bp_obj, _ = bp.scratch_blueprint(pkg=PKG, name=name, parent=unreal.SaveGame)
     for var, vtype, _empty in variables:
         bel.add_member_variable(bp_obj, var, vtype)                    # no-op if present

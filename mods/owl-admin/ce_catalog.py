@@ -3,14 +3,26 @@ the editor).
 
     entries = catalog(unreal)   # [{"id", "cat", "name", "icon"}] sorted by name
 
-Every ItemTable row with an English name (tm_catalog's NSLOCTEXT reading; dev rows "xx..." are
-skipped). cat = the menu_defs.CE_ITEM_CATS index its GUICategory belongs to, or -1 (shown only
+Every ItemTable row with an English name (tm_catalog's NSLOCTEXT reading, or the string table a
+LOCTABLE name points at; dev rows "xx..." are skipped). cat = the menu_defs.CE_ITEM_CATS index its GUICategory belongs to, or -1 (shown only
 under All). Baked into the admin menu as arrays (03), so the Item catalog tab can search and
 the Inventory tab can name what a player carries, with no data-table reads at runtime.
 """
 import json
 
+import re
+
 from tm_catalog import ITEM_TABLE, _NSLOC, item_icon
+
+_LOCTABLE = re.compile(r'LOCTABLE\("([^"]+)",\s*"([^"]+)"\)')
+
+
+def _table_name(unreal, raw):
+    """A name kept in a string table (LOCTABLE("<table>", "<key>"), e.g. the Anvil Keeper gear), or ""."""
+    m = _LOCTABLE.search(raw)
+    if not m:
+        return ""
+    return (unreal.StringTableLibrary.get_table_entry_source_string(m.group(1), m.group(2)) or "").strip()
 
 
 def catalog(unreal):
@@ -30,8 +42,9 @@ def catalog(unreal):
         rid = str(r.get("Name"))
         if not rid.isdigit():
             continue                           # the game adds items by template id = the row name
-        m = _NSLOC.search(names.get(rid, ""))
-        name = m.group(1).replace('\\"', '"').strip() if m else ""
+        raw = names.get(rid, "")
+        m = _NSLOC.search(raw)
+        name = m.group(1).replace('\\"', '"').strip() if m else _table_name(unreal, raw)
         if not name or name.lower().startswith("xx"):
             continue
         entries.append({"id": int(rid), "cat": cat_of.get(str(r.get("GUICategory")), -1), "name": name,

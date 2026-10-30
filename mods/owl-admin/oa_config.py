@@ -50,6 +50,18 @@ KITS_SAVEGAME = "BP_OwlKitsSave"      # Names (one per kit); per entry: EKit, EI
 KITS_SLOT = "OwlKits"
 KITCLAIM_SAVEGAME = "BP_OwlKitClaimSave"   # Last: per kit, the minute (Unix time / 60) it was claimed, 0 = never
 KITCLAIM_SLOT_PREFIX = "OwlKit_"           # OwlKit_<player net id>
+# Scripting: the admins' command scripts (server-wide; sent only to unlocked admins)
+SCRIPTS_SAVEGAME = "BP_OwlScriptsSave"     # Names (one per script); Lines (SCRIPT_LINES per script, in order)
+SCRIPTS_SLOT = "OwlScripts"
+# Trading: the trade log the admin menu's Trading page shows
+TRADES_SAVEGAME = "BP_OwlTradeSave"        # Log: "time|line", newest last, at most TRADE_LOG_MAX
+TRADES_SLOT = "OwlTrades"
+# NPCs: the admins' custom NPCs (placed in the world, talk + wares), and the window players use
+NPC_BP = "BP_OwlNPC"                       # the NPC character (a child of the game's dialogue NPC)
+NPC_SAVEGAME = "BP_OwlNpcSave"             # every NPC: name, role, line, where, gear, wares
+NPC_SLOT = "OwlNpcs"
+NPC_WINDOW_WBP = "WBP_OwlNpcWindow"        # the talk / wares window (a UI module, opened by the NPC)
+NPC_MODULE = "OwlNpcWindow"
 
 # Conan's server settings actor (a BP subclass of ServerSettings): the menu's LIVE settings
 # (menu_defs.LIVE) are pushed into it -- native ones via SetServerSetting, which also writes

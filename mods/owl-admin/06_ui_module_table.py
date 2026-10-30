@@ -1,6 +1,7 @@
 """owl-admin step 06: DT_OwlAdmin_UIModules -- the UIModuleTableRow table that 09's
 ModDataTableOperations override merges into the game's DT_UIModuleTable, registering both
-menus as GUIModules: OwlAdminMenu (03, Shift+O) and OwlPlayerMenu (07, Shift+I).
+menus as GUIModules: OwlAdminMenu (03, Shift+O) and OwlPlayerMenu (07, Shift+I), and the NPC window
+OwlNpcWindow (15, no key: BP_OwlNPC opens it when a player presses E on the NPC).
 
 Keys: each row's ToggleActionName names an input action that 09 registers at mod init
 (oa_config.ACTIONS). Conan's GUIModuleController binds module toggles by action name -- the
@@ -17,7 +18,7 @@ by hand: ActivateModule showed the cursor, deactivating hid it again.)
 Rows: modelled on the shipped ModMenu row (Fullscreen, Close on Esc, z 30), but shown in
 the playing state instead of the main menu.
 
-Run with Play STOPPED, after 03 and 07:  python ue_run.py mods/owl-admin/06_ui_module_table.py
+Run with Play STOPPED, after 03, 07 and 15:  python ue_run.py mods/owl-admin/06_ui_module_table.py
 """
 import sys
 for _m in list(sys.modules):
@@ -37,11 +38,12 @@ assert not unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).is_in_play_i
 PKG = MOD.resolve_pkg()
 PATH = "%s/%s" % (PKG, MOD.UI_MODULE_TABLE)
 MODULES = [(MOD.MENU_MODULE, MOD.MENU_WBP, MOD.ACTIONS[0][0]),
-           (MOD.PLAYER_MODULE, MOD.PLAYER_MENU_WBP, MOD.ACTIONS[1][0])]
+           (MOD.PLAYER_MODULE, MOD.PLAYER_MENU_WBP, MOD.ACTIONS[1][0]),
+           (MOD.NPC_MODULE, MOD.NPC_WINDOW_WBP, "None")]   # no key: the NPC (14) opens it when talked to
 for _m, wbp, _a in MODULES:
     cls = unreal.load_object(None, MOD.full(PKG, wbp) + "_C")
     assert cls and isinstance(unreal.get_default_object(cls), unreal.WindowRoot), \
-        "build 03 and 07 first: %s must be a WindowRoot" % wbp
+        "build 03, 07 and 15 first: %s must be a WindowRoot" % wbp
 eal = unreal.EditorAssetLibrary
 DTL = unreal.DataTableFunctionLibrary
 

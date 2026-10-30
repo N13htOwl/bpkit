@@ -62,6 +62,18 @@ Cheats (03, the admin's own): OwlServerChSet / OwlServerChGet / OwlClientCh and 
 cheats_server.py, and so do two more tick steps: the server's (after TmPawn: the cheats onto the
 owner's character, off when admin mode locks) and the owner's client's (its move speed).
 
+Scripting (03): OwlServerScGet / OwlServerScSave / OwlServerScRan / OwlClientSc and their Sc* come
+from scripts_server.py (the scripts themselves run on the admin's own client).
+
+Trading (07's Trade tab, 03's Trading page): OwlServerTr* / OwlClientTr* / OwlTrSync / OwlTrReset /
+OwlTrExecute and their Tr* / SvTr* come from trade_server.py, and one more server tick step (after
+the cheats': an unanswered request runs out, a trade whose other side left ends). The item names
+(TrCatIds / TrCatNames, the item table) are on the class defaults.
+
+NPCs (03's NPC editor, 15's NPC window, 14's BP_OwlNPC): OwlServerNpc* / OwlClientNpc* / OwlNpcSpawn /
+OwlNpcEnsure and their Npc* / SvNpc* come from npc_server.py, and one more server tick step (the
+first time: OwlNpcEnsure, so the saved NPCs stand in the world). Build 14 before this.
+
 Run with Play STOPPED, after 02 (which creates the empty asset so it can spawn it) and 08:
     python ue_run.py mods/owl-admin/10_relay.py
 """
@@ -74,7 +86,7 @@ import unreal
 import os
 from bpkit import bridge as bp, ir, build, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
-for _m in ("oa_config", "oa_auth", "menu_defs", "ce_panel", "ce_server", "bug_server", "hud_server", "restart_server", "pet_server", "players_server", "kits_server", "cheats_server"):
+for _m in ("oa_config", "oa_auth", "menu_defs", "ce_panel", "ce_server", "bug_server", "hud_server", "restart_server", "pet_server", "players_server", "kits_server", "cheats_server", "scripts_server", "trade_server", "npc_server", "ce_catalog", "tm_catalog"):
     sys.modules.pop(_m, None)
 import types
 import oa_config as MOD
@@ -87,6 +99,10 @@ import pet_server
 import players_server
 import kits_server
 import cheats_server
+import scripts_server
+import trade_server
+import npc_server
+import ce_catalog
 from oa_auth import Auth
 
 assert not unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).is_in_play_in_editor(), \
@@ -116,8 +132,10 @@ EVENTS = {"OwlServerLogin": RUN_ON_SERVER, "OwlServerSetPassword": RUN_ON_SERVER
 TM_SG_CLS = MOD.full(PKG, MOD.TM_SAVEGAME) + "_C"
 for c in (TM_SG_CLS, MOD.full(PKG, MOD.CE_SAVEGAME) + "_C", MOD.full(PKG, MOD.ECON_SAVEGAME) + "_C",
           MOD.full(PKG, MOD.BUG_SAVEGAME) + "_C", MOD.full(PKG, MOD.HUD_SAVEGAME) + "_C",
-          MOD.full(PKG, MOD.RESTART_SAVEGAME) + "_C"):
+          MOD.full(PKG, MOD.RESTART_SAVEGAME) + "_C", MOD.full(PKG, MOD.SCRIPTS_SAVEGAME) + "_C",
+          MOD.full(PKG, MOD.TRADES_SAVEGAME) + "_C", MOD.full(PKG, MOD.NPC_SAVEGAME) + "_C"):
     assert unreal.load_object(None, c), "build 08 first: no " + c
+assert unreal.load_object(None, MOD.full(PKG, MOD.NPC_BP) + "_C"), "build 14 first: no " + MOD.NPC_BP
 assert unreal.get_default_object(unreal.load_object(None, CTRL_CLS)).get_editor_property("HudVer") is not None, \
     "rebuild 02 first: the controller has no HudVer"
 assert unreal.get_default_object(unreal.load_object(None, CTRL_CLS)).get_editor_property("RsVer") is not None, \
@@ -155,6 +173,14 @@ CE_VARS += players_server.variables(unreal, bel)
 CE_VARS += kits_server.variables(unreal, bel)
 # Cheats (cheats_server)
 CE_VARS += cheats_server.variables(unreal, bel, unreal.load_object(None, MOD.full(PKG, MOD.CE_SAVEGAME) + "_C"))
+# Scripting (scripts_server)
+CE_VARS += scripts_server.variables(unreal, bel, unreal.load_object(None, MOD.full(PKG, MOD.SCRIPTS_SAVEGAME) + "_C"))
+# Trading (trade_server)
+CE_VARS += trade_server.variables(unreal, bel, unreal.load_object(None, MOD.full(PKG, MOD.CE_SAVEGAME) + "_C"),
+                                  unreal.load_object(None, MOD.full(PKG, MOD.TRADES_SAVEGAME) + "_C"))
+# NPCs (npc_server)
+CE_VARS += npc_server.variables(unreal, bel, unreal.load_object(None, MOD.full(PKG, MOD.NPC_SAVEGAME) + "_C"),
+                                unreal.load_object(None, MOD.full(PKG, MOD.NPC_BP) + "_C"))
 for var, vtype in CE_VARS:
     bel.add_member_variable(bp_obj, var, vtype)
     bel.set_blueprint_variable_replication(bp_obj, var, REPL.NONE)
@@ -401,9 +427,11 @@ g.wire(find, "ReturnValue", base, "A", exec=False)
 g.typed_input(base, "B", str(N_SLOTS), "int")
 prev, prev_pin = bKnown, "then"
 for k in range(N_SLOTS):
-    at = g.call("Add_IntInt", KML, pos=(1900 + 300 * k, 9500))
-    g.wire(base, "ReturnValue", at, "A", exec=False)
-    g.typed_input(at, "B", str(k), "int")
+    at = base
+    if k:  # (a pasted B of 0 comes back as Add_IntInt's own default, 1)
+        at = g.call("Add_IntInt", KML, pos=(1900 + 300 * k, 9500))
+        g.wire(base, "ReturnValue", at, "A", exec=False)
+        g.typed_input(at, "B", str(k), "int")
     item = g.array_get(ce, "Look", k, (1900 + 300 * k, 9650), elem_cat="string")
     st = g.array_fn("Array_Set", pos=(1900 + 300 * k, 9000), elem_cat="string")
     g.array_item_pin(st, "Item", "string")
@@ -552,8 +580,12 @@ bScreen = g.branch(pos=(1700, Y))
 # the cheats (cheats_server): the server's step, then the owner's client's
 _ch = types.SimpleNamespace(
     g=g, self_call=self_call, owner_pc=owner_pc, save_slot=save_slot, Auth=Auth, MOD=MOD, PKG=PKG,
-    CTRL_CLS=CTRL_CLS, SG_CLS=SG_CLS, RUN_ON_SERVER=RUN_ON_SERVER, RUN_ON_OWNING_CLIENT=RUN_ON_OWNING_CLIENT)
-_ch_exits = (cheats_server.tick(_ch, [(setPawn, "then")], (pcCast, "AsController"), 106000)
+    CTRL_CLS=CTRL_CLS, SG_CLS=SG_CLS, RUN_ON_SERVER=RUN_ON_SERVER, RUN_ON_OWNING_CLIENT=RUN_ON_OWNING_CLIENT,
+    RELAY_C=FULL + "_C")
+# (then the trade step: trade_server)
+_ch_exits = (npc_server.tick(_ch, trade_server.tick(_ch, cheats_server.tick(_ch, [(setPawn, "then")],
+                                                                             (pcCast, "AsController"), 106000), 112000),
+                              113500)
              + cheats_server.client_tick(_ch, [(ask, "then"), (bAsk, "else")], 110000))
 for e, ep in _ch_exits + [(pcCast, "CastFailed"), (askCast, "CastFailed")]:
     g.wire(e, ep, bScreen, "execute")
@@ -746,6 +778,21 @@ EVENTS.update(cheats_server.build(types.SimpleNamespace(
     g=g, self_call=self_call, owner_pc=owner_pc, save_slot=save_slot, Auth=Auth, MOD=MOD, PKG=PKG,
     CTRL_CLS=CTRL_CLS, SG_CLS=SG_CLS, RUN_ON_SERVER=RUN_ON_SERVER, RUN_ON_OWNING_CLIENT=RUN_ON_OWNING_CLIENT),
     y0=100000))
+# ---------------------------------------------------------------- Scripting (admin menu 03)
+EVENTS.update(scripts_server.build(types.SimpleNamespace(
+    g=g, self_call=self_call, owner_pc=owner_pc, save_slot=save_slot, Auth=Auth, MOD=MOD, PKG=PKG,
+    CTRL_CLS=CTRL_CLS, SG_CLS=SG_CLS, RUN_ON_SERVER=RUN_ON_SERVER, RUN_ON_OWNING_CLIENT=RUN_ON_OWNING_CLIENT),
+    y0=114000))
+# ---------------------------------------------------------------- Trading (player menu 07, admin menu 03)
+EVENTS.update(trade_server.build(types.SimpleNamespace(
+    g=g, self_call=self_call, owner_pc=owner_pc, save_slot=save_slot, Auth=Auth, MOD=MOD, PKG=PKG,
+    CTRL_CLS=CTRL_CLS, SG_CLS=SG_CLS, RUN_ON_SERVER=RUN_ON_SERVER, RUN_ON_OWNING_CLIENT=RUN_ON_OWNING_CLIENT,
+    RELAY_C=FULL + "_C"), y0=120000))
+# ---------------------------------------------------------------- NPCs (admin menu 03, NPC window 15)
+EVENTS.update(npc_server.build(types.SimpleNamespace(
+    g=g, self_call=self_call, owner_pc=owner_pc, save_slot=save_slot, Auth=Auth, MOD=MOD, PKG=PKG,
+    CTRL_CLS=CTRL_CLS, SG_CLS=SG_CLS, RUN_ON_SERVER=RUN_ON_SERVER, RUN_ON_OWNING_CLIENT=RUN_ON_OWNING_CLIENT,
+    RELAY_C=FULL + "_C"), y0=150000))
 
 # Clear + compile first, or a rebuild renames the pasted events (see 02)
 bel.compile_blueprint(bp_obj)
@@ -790,6 +837,7 @@ for var in ("TmLook", "TmPawn", "TmOutfitNames", "TmOutfitLooks", "TmClientVer",
     cdo.get_editor_property(var)                               # raises if remove_unused_variables took it
 pet_server.defaults(cdo)                                     # what each pet costs: server side only
 cheats_server.defaults(cdo)                                  # all off; the cheats' names for the log
+trade_server.defaults(cdo, ce_catalog.catalog(unreal))       # item names for the trade views and log
 cdo.set_editor_property("replicates", True)
 cdo.set_editor_property("only_relevant_to_owner", False)     # everyone sees everyone's look
 cdo.set_editor_property("always_relevant", True)
