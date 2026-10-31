@@ -52,7 +52,7 @@ ANIMS = ("Perch", "Flap", "Glide")    # AnimNow 0, 1, 2: sitting, take-off / lan
 BIRD_SCALE = 0.8                      # the model is ~33 cm tall
 BIRD_YAW = -90.0                      # the model faces +Y once imported; the actor faces +X
 SHOULDER = "b_R_clavicle"
-PERCH_UP, PERCH_OUT = 16.0, 10.0      # cm above the bone, and out to the side
+PERCH_UP, PERCH_OUT = 2.0, 17.0       # cm above the bone, and out to the side (on the shoulder, clear of the head)
 FLY, EASE, LAPS = 14.0, 2.0, 2        # seconds aloft, seconds of take-off / landing, times round
 RADIUS, HEIGHT, BOB = 350.0, 220.0, 30.0
 BANK = 25.0                           # degrees of roll while circling
@@ -113,6 +113,8 @@ bird.set_editor_property("skeletal_mesh_asset", OWL_MESH)
 bird.set_editor_property("relative_scale3d", unreal.Vector(BIRD_SCALE, BIRD_SCALE, BIRD_SCALE))
 bird.set_editor_property("relative_rotation", unreal.Rotator(0.0, 0.0, BIRD_YAW))
 bird.set_collision_profile_name("NoCollision")
+# animate even when the engine doesn't count it as rendered (perched close to the camera it didn't)
+bird.set_editor_property("visibility_based_anim_tick_option", unreal.VisibilityBasedAnimTickOption.ALWAYS_TICK_POSE)
 bird.set_editor_property("animation_mode", unreal.AnimationMode.ANIMATION_SINGLE_NODE)
 bird.set_editor_property("animation_data", unreal.SingleAnimationPlayData(
     anim_to_play=OWL_ANIMS["Perch"], saved_looping=True, saved_playing=True))
@@ -219,8 +221,9 @@ for k, name in enumerate(ANIMS):          # an exec pin leads to one node: test 
                   (x + 1200 + 600 * k, 0))
     play = g.call("PlayAnimation", SKEL, pos=(x + 1500 + 600 * k, 200))
     g.wire(*c.var("Bird", "object", (x + 1300 + 600 * k, 400), sub=ir.obj_path(SKEL)), play, "self", exec=False)
+    # quoted, as 10's SpawnActor class: an unquoted DefaultObject is dropped on paste (the owl played nothing)
     play.pin("NewAnimToPlay").typed("object", ir.obj_path("/Script/Engine.AnimationAsset"),
-                                    direction="EGPD_Input").object_literal(OWL_ANIMS[name].get_path_name())
+                                    direction="EGPD_Input").set("DefaultObject", '"%s"' % OWL_ANIMS[name].get_path_name())
     g.typed_input(play, "bLooping", "true", "bool")
     g.wire(bk, "then", play, "execute")
     c.exits = [(bk, "else")]
@@ -232,10 +235,15 @@ rep = build.build_graph(FULL, g, verbose=False)
 assert rep["ok"], "owl pet graph not clean: %r" % {k: rep[k] for k in (
     "dropped_nodes", "dropped_links", "orphans", "wildcards", "errors")}
 bel.compile_blueprint(bp_obj)
+_plays = [b for b in bp.export_nodes(bp.graph_nodes(_g)).split("Begin Object Class=") if 'MemberName="PlayAnimation"' in b]
+_set = [b for b in _plays if OWL_DIR + "/" in b]
+assert len(_plays) == len(ANIMS) and len(_set) == len(ANIMS), \
+    "PlayAnimation lost its animation on paste: %d of %d set" % (len(_set), len(_plays))
 
 cdo = unreal.get_default_object(unreal.load_object(None, FULL + "_C"))
 cdo.set_editor_property("replicates", True)
 cdo.set_editor_property("replicate_movement", False)
+cdo.set_editor_property("AnimNow", -1)      # -1: the first tick plays Perch (the component's own start anim isn't applied)
 tick_fn = cdo.get_editor_property("primary_actor_tick")
 tick_fn.set_editor_property("tick_group", unreal.TickingGroup.TG_POST_UPDATE_WORK)
 cdo.set_editor_property("primary_actor_tick", tick_fn)
