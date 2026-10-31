@@ -12,7 +12,7 @@ Admins log in with a mod password (set once, the first time a Conan admin opens 
 [list]
 [*][b]Characters[/b] - pick an online player and edit their level, attribute points and attributes, view and change their inventory, grant items from a searchable catalogue of every item in the game, and set their Owl wallet. Every change is logged.
 [*][b]Players[/b] - teleport to players, ban and unban.
-[*][b]NPCs[/b] [i](new)[/i] - set up to 6 merchant NPCs: name, role, what they say, and up to 8 wares each, priced in Gold or Silver Coins. Stand where you want one and press [i]Place here[/i]; it wears whatever gear you have equipped. Players press E to talk and buy.
+[*][b]NPCs[/b] [i](new)[/i] - set up to 6 merchant NPCs: name, role (shown under their name), what they say, and up to 8 wares each, priced in Gold or Silver Coins. Stand where you want one and press [i]Place here[/i]; it wears whatever gear you have equipped. Players press E to talk and buy.
 [*][b]Kits[/b] - build item bundles that players claim from their own menu.
 [*][b]Trading[/b] - turn player trading on or off, set the trade distance, slots, cooldown and timeout, and read the trade log.
 [*][b]Scripting[/b] [i](new)[/i] - save command scripts and run them in one click, plus a console with history. Commands run as you.
@@ -48,7 +48,6 @@ Walk up to a merchant and press [b]E[/b] to talk. [i]Browse wares[/i] shows what
 
 [h2]Known issues[/h2]
 [list]
-[*]NPC merchants show a "[Fighter]" tag over their head.
 [*]Prices in the NPC's purchase message have no thousands separator (10000).
 [*]Not yet tested with many players on a busy dedicated server.
 [*]Some server settings are saved but not active yet (see above).
