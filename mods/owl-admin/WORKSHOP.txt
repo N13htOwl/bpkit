@@ -1,0 +1,60 @@
+[h1]Owl Admin (Beta)[/h1]
+
+An all-in-one admin and player menu for Conan Exiles Enhanced. Admins get a password-protected control panel; players get a menu of their own for outfits, kits, trading and more. Custom NPC merchants and a shoulder owl for admins are new in V1.3.
+
+[b]This is a beta.[/b] Everything below has been tested in single player. Testing on live dedicated servers is still going on, so please [b]back up your server's save (game.db) before installing[/b] and report anything odd with the in-game Bug Report form.
+
+[hr][/hr]
+
+[h2]Admin menu (Shift+O)[/h2]
+Admins log in with a mod password (set once, the first time a Conan admin opens the menu). Logins and failed attempts are logged.
+
+[list]
+[*][b]Characters[/b] - pick an online player and edit their level, attribute points and attributes, view and change their inventory, grant items from a searchable catalogue of every item in the game, and set their Owl wallet. Every change is logged.
+[*][b]Players[/b] - teleport to players, ban and unban.
+[*][b]NPCs[/b] [i](new)[/i] - set up to 6 merchant NPCs: name, role, what they say, and up to 8 wares each, priced in Gold or Silver Coins. Stand where you want one and press [i]Place here[/i]; it wears whatever gear you have equipped. Players press E to talk and buy.
+[*][b]Kits[/b] - build item bundles that players claim from their own menu.
+[*][b]Trading[/b] - turn player trading on or off, set the trade distance, slots, cooldown and timeout, and read the trade log.
+[*][b]Scripting[/b] [i](new)[/i] - save command scripts and run them in one click, plus a console with history. Commands run as you.
+[*][b]Cheats[/b] - god mode, no hunger or thirst, infinite stamina, free building and move speed, for your own character while in admin mode. Turned off automatically when you lock the menu.
+[*][b]HUD[/b] - choose what every player sees on screen.
+[*][b]Server Restart[/b] - schedule restart warnings.
+[*][b]Bug Reports[/b] - read what players reported, newest first.
+[*][b]Server settings[/b] - the Trading, Kits and Cheats settings work, and so do PvP, max clan size, building decay, structure damage and friendly-fire damage. Other settings on the Building, Combat, Items & Loot and Commands pages are saved, but they don't do anything yet; they're for features still being built.
+[*][b]Shoulder owl[/b] [i](new)[/i] - while you're in admin mode, a custom owl rides your shoulder and now and then circles around you.
+[/list]
+
+[h2]Player menu (Shift+I)[/h2]
+[list]
+[*][b]Transmog Outfits[/b] - change how your gear looks and save outfits.
+[*][b]Pet Shop[/b] - buy pets with your Owl wallet.
+[*][b]Animal Masks[/b] and [b]Equipment[/b].
+[*][b]Kits[/b] - claim the kits your admins set up.
+[*][b]Trade[/b] - trade items with nearby players: both offer, both confirm.
+[*][b]Bug Report[/b] - send a report straight to the server's admins.
+[/list]
+
+[h2]NPC merchants[/h2]
+Walk up to a merchant and press [b]E[/b] to talk. [i]Browse wares[/i] shows what they sell; the price comes out of the Gold or Silver Coins in your backpack. Example: an Anvil Keeper selling the Anvil Keeper Axes and Greataxe for 10,000 Gold Coins each.
+
+[hr][/hr]
+
+[h2]Install[/h2]
+[olist]
+[*][b]Back up your save[/b] (game.db) first.
+[*]Subscribe, and add the mod to your server's mod list.
+[*]Restart the server. A Conan admin opens the menu with [b]Shift+O[/b] and sets the mod password.
+[/olist]
+
+[h2]Known issues[/h2]
+[list]
+[*]NPC merchants show a "[Fighter]" tag over their head.
+[*]Prices in the NPC's purchase message have no thousands separator (10000).
+[*]Not yet tested with many players on a busy dedicated server.
+[*]Some server settings are saved but not active yet (see above).
+[/list]
+
+[h2]Feedback[/h2]
+Use the in-game [b]Bug Report[/b] form (player menu, Shift+I) or leave a comment below. Please include what you did and what happened.
+
+[i]Version 1.3[/i]
