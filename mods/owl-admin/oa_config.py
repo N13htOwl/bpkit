@@ -62,6 +62,7 @@ NPC_SAVEGAME = "BP_OwlNpcSave"             # every NPC: name, role, line, where,
 NPC_SLOT = "OwlNpcs"
 NPC_WINDOW_WBP = "WBP_OwlNpcWindow"        # the talk / wares window (a UI module, opened by the NPC)
 NPC_MODULE = "OwlNpcWindow"
+PET_BP = "BP_OwlPet"                       # the shoulder owl admins in admin mode get (16, spawned by the relay)
 
 # Conan's server settings actor (a BP subclass of ServerSettings): the menu's LIVE settings
 # (menu_defs.LIVE) are pushed into it -- native ones via SetServerSetting, which also writes

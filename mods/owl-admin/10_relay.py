@@ -74,6 +74,9 @@ NPCs (03's NPC editor, 15's NPC window, 14's BP_OwlNPC): OwlServerNpc* / OwlClie
 OwlNpcEnsure and their Npc* / SvNpc* come from npc_server.py, and one more server tick step (the
 first time: OwlNpcEnsure, so the saved NPCs stand in the world). Build 14 before this.
 
+The shoulder owl (16's BP_OwlPet): one more server tick step, owl_server.py -- every unlocked admin
+gets an owl (SvOwlPet), removed when they lock. Build 16 before this.
+
 Run with Play STOPPED, after 02 (which creates the empty asset so it can spawn it) and 08:
     python ue_run.py mods/owl-admin/10_relay.py
 """
@@ -86,7 +89,7 @@ import unreal
 import os
 from bpkit import bridge as bp, ir, build, config as _cfg
 sys.path.insert(0, os.path.join(_cfg.REPO_ROOT, "mods", "owl-admin"))
-for _m in ("oa_config", "oa_auth", "menu_defs", "ce_panel", "ce_server", "bug_server", "hud_server", "restart_server", "pet_server", "players_server", "kits_server", "cheats_server", "scripts_server", "trade_server", "npc_server", "ce_catalog", "tm_catalog"):
+for _m in ("oa_config", "oa_auth", "menu_defs", "ce_panel", "ce_server", "bug_server", "hud_server", "restart_server", "pet_server", "players_server", "kits_server", "cheats_server", "scripts_server", "trade_server", "npc_server", "owl_server", "ce_catalog", "tm_catalog"):
     sys.modules.pop(_m, None)
 import types
 import oa_config as MOD
@@ -102,6 +105,7 @@ import cheats_server
 import scripts_server
 import trade_server
 import npc_server
+import owl_server
 import ce_catalog
 from oa_auth import Auth
 
@@ -136,6 +140,7 @@ for c in (TM_SG_CLS, MOD.full(PKG, MOD.CE_SAVEGAME) + "_C", MOD.full(PKG, MOD.EC
           MOD.full(PKG, MOD.TRADES_SAVEGAME) + "_C", MOD.full(PKG, MOD.NPC_SAVEGAME) + "_C"):
     assert unreal.load_object(None, c), "build 08 first: no " + c
 assert unreal.load_object(None, MOD.full(PKG, MOD.NPC_BP) + "_C"), "build 14 first: no " + MOD.NPC_BP
+assert unreal.load_object(None, MOD.full(PKG, MOD.PET_BP) + "_C"), "build 16 first: no " + MOD.PET_BP
 assert unreal.get_default_object(unreal.load_object(None, CTRL_CLS)).get_editor_property("HudVer") is not None, \
     "rebuild 02 first: the controller has no HudVer"
 assert unreal.get_default_object(unreal.load_object(None, CTRL_CLS)).get_editor_property("RsVer") is not None, \
@@ -181,6 +186,8 @@ CE_VARS += trade_server.variables(unreal, bel, unreal.load_object(None, MOD.full
 # NPCs (npc_server)
 CE_VARS += npc_server.variables(unreal, bel, unreal.load_object(None, MOD.full(PKG, MOD.NPC_SAVEGAME) + "_C"),
                                 unreal.load_object(None, MOD.full(PKG, MOD.NPC_BP) + "_C"))
+# the shoulder owl (owl_server)
+CE_VARS += owl_server.variables(unreal, bel, unreal.load_object(None, MOD.full(PKG, MOD.PET_BP) + "_C"))
 for var, vtype in CE_VARS:
     bel.add_member_variable(bp_obj, var, vtype)
     bel.set_blueprint_variable_replication(bp_obj, var, REPL.NONE)
@@ -583,9 +590,9 @@ _ch = types.SimpleNamespace(
     CTRL_CLS=CTRL_CLS, SG_CLS=SG_CLS, RUN_ON_SERVER=RUN_ON_SERVER, RUN_ON_OWNING_CLIENT=RUN_ON_OWNING_CLIENT,
     RELAY_C=FULL + "_C")
 # (then the trade step: trade_server)
-_ch_exits = (npc_server.tick(_ch, trade_server.tick(_ch, cheats_server.tick(_ch, [(setPawn, "then")],
+_ch_exits = (owl_server.tick(_ch, npc_server.tick(_ch, trade_server.tick(_ch, cheats_server.tick(_ch, [(setPawn, "then")],
                                                                              (pcCast, "AsController"), 106000), 112000),
-                              113500)
+                              113500), (pcCast, "AsController"), 114500)
              + cheats_server.client_tick(_ch, [(ask, "then"), (bAsk, "else")], 110000))
 for e, ep in _ch_exits + [(pcCast, "CastFailed"), (askCast, "CastFailed")]:
     g.wire(e, ep, bScreen, "execute")
